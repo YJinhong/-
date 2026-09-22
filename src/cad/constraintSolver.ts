@@ -1,6 +1,7 @@
 import type{CADConstraint,Line}from'../types';
 
 export type ConstraintSolveResult={lines:Line[];residuals:{id:string;error:number}[];conflicts:string[]};
+export type ConstraintDiagnostic={id:string;error:number;severity:'ok'|'warning'|'conflict';conflictingIds:string[];improvement:number};
 
 const clone=(lines:Line[])=>lines.map(l=>({...l,points:l.points.map(p=>({...p}))}));
 
@@ -69,4 +70,29 @@ export function solveConstraints(input:Line[],constraints:CADConstraint[],w:numb
  }
  const residuals=constraints.map(c=>{const l=lines.find(x=>x.id===c.lineId);return{id:c.id,error:l?error(l,c,lines,w,h):0}}).filter(x=>x.error>.05);
  return{lines,residuals,conflicts:residuals.map(x=>x.id)};
+}
+
+
+export function diagnoseConstraints(input:Line[],constraints:CADConstraint[],w:number,h:number,iterations=12):ConstraintDiagnostic[]{
+ const active=constraints.filter(c=>c.enabled!==false);
+ if(!active.length)return [];
+ const baseline=solveConstraints(input,active,w,h,iterations);
+ const baseErr=new Map(baseline.residuals.map(r=>[r.id,r.error]));
+ const diagnostics=active.map(c=>{
+  const others=active.filter(x=>x.id!==c.id);
+  const without=solveConstraints(input,others,w,h,iterations);
+  const remainingMax=without.residuals.reduce((m,r)=>Math.max(m,r.error),0);
+  const current=baseErr.get(c.id)??0;
+  const improvement=Math.max(0,current-remainingMax);
+  const conflictingIds=without.residuals.filter(r=>r.error>.05).map(r=>r.id);
+  const severity=current>.5&&improvement>.05?'conflict':current>.05?'warning':'ok';
+  return{id:c.id,error:current,severity,conflictingIds,improvement};
+ });
+ for(const d of diagnostics){
+  if(d.severity==='conflict'){
+   const connected=active.filter(c=>d.conflictingIds.includes(c.id)||c.id===d.id).map(c=>c.id);
+   d.conflictingIds=Array.from(new Set(connected));
+  }
+ }
+ return diagnostics;
 }
