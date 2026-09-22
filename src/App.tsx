@@ -15,6 +15,12 @@ import{BatchProcessor}from'./batch/batchProcessor';
 import{solveConstraints,diagnoseConstraints}from'./cad/constraintSolver';
 
 const defaults={detail:'balanced' as const,minWidthMm:3.5,connectDistance:.06,simplifyTolerance:.015};
+function imageWorkSize(width?:number,height?:number){
+ const w=Math.max(1,width??300),h=Math.max(1,height??250),long=Math.max(w,h),base=300;
+ if(!width||!height)return{widthMm:300,heightMm:250};
+ const widthMm=Math.round((w/long)*base*10)/10,heightMm=Math.round((h/long)*base*10)/10;
+ return{widthMm:Math.max(40,widthMm),heightMm:Math.max(40,heightMm)};
+}
 const blank=():Project=>({id:crypto.randomUUID(),name:'Untitled Sugar Art',createdAt:Date.now(),updatedAt:Date.now(),productionPlan:undefined,lines:[],widthMm:300,heightMm:250,settings:defaults,warnings:[],sticks:[],connections:[],history:[],constraints:[]});
 const cloneLines=(lines:Line[])=>lines.map(l=>({...l,points:l.points.map(p=>({...p}))}));
 const normalize=(p:Project):Project=>({...p,productionPlan:p.productionPlan??undefined,constraints:p.constraints??[],connections:p.connections??[],history:p.history??[],warnings:p.warnings??[],sticks:p.sticks??[],settings:{...defaults,...p.settings}});
@@ -37,7 +43,7 @@ export default function App(){
   const {sx,sy,ppm}=projectScales(w,h,p.widthMm,p.heightMm);
   if(grid){const gridMm=10,stepX=gridMm*ppm,stepY=gridMm*ppm; x.strokeStyle=dark?'#272b32':'#d9dde4';x.lineWidth=1;const halfW=Math.max(700,w/(2*zoom)),halfH=Math.max(500,h/(2*zoom));for(let i=-Math.ceil(halfW/stepX)*stepX;i<=halfW;i+=stepX){x.beginPath();x.moveTo(i,-halfH);x.lineTo(i,halfH);x.stroke()}for(let i=-Math.ceil(halfH/stepY)*stepY;i<=halfH;i+=stepY){x.beginPath();x.moveTo(-halfW,i);x.lineTo(halfW,i);x.stroke()}}
   const drawLine=(l:Line,stroke='#171717',width=Math.max(1,l.width*ppm),alpha=1)=>{x.globalAlpha=alpha;x.strokeStyle=stroke;x.lineWidth=width;x.lineCap='round';x.lineJoin='round';x.beginPath();l.points.forEach((q,i)=>i?x.lineTo(q.x*sx,q.y*sy):x.moveTo(q.x*sx,q.y*sy));x.stroke();x.globalAlpha=1};
-  if(originalImage&&viewMode!=='result'){const iw=originalImage.naturalWidth||originalImage.width,ih=originalImage.naturalHeight||originalImage.height,scale=Math.min(1400/iw,1000/ih),dw=iw*scale,dh=ih*scale;x.globalAlpha=viewMode==='overlay'?overlayOpacity:.92;x.drawImage(originalImage,-dw/2,-dh/2,dw,dh);x.globalAlpha=1}
+  if(originalImage&&viewMode!=='result'){const dw=sx,dh=sy;x.globalAlpha=viewMode==='overlay'?overlayOpacity:.92;x.drawImage(originalImage,-dw/2,-dh/2,dw,dh);x.globalAlpha=1}
   const canvasDiagnostics=diagnoseConstraints(p.lines,(p.constraints??[]),p.widthMm,p.heightMm,12);
   const canvasConflictIds=new Set(canvasDiagnostics.filter(d=>d.severity==='conflict').map(d=>d.id));
   const canvasWarningIds=new Set(canvasDiagnostics.filter(d=>d.severity==='warning').map(d=>d.id));
@@ -201,7 +207,8 @@ for(let i=0;i<files.length;i++){
   const connections=findConnectionCandidates(lines,p.settings.connectDistance);
   const warnings=[...analyze(lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))];
   const now=Date.now();
-  const project:Project={...blank(),id:crypto.randomUUID(),name:files[i].name.replace(/\.[^.]+$/,''),createdAt:now,updatedAt:now,originalName:files[i].name,imageData:meta[i].thumbnail,lines,connections,warnings,sticks:recommendSticks(lines),settings:{...p.settings},history:[]};
+  const work=imageWorkSize(meta[i].width,meta[i].height);
+  const project:Project={...blank(),id:crypto.randomUUID(),name:files[i].name.replace(/\.[^.]+$/,''),createdAt:now,updatedAt:now,originalName:files[i].name,imageData:meta[i].thumbnail,widthMm:work.widthMm,heightMm:work.heightMm,lines,connections,warnings,sticks:recommendSticks(lines),settings:{...p.settings},history:[]};
   created.push(project);
   await saveProject(project);
   setBatchJobs(js=>js.map(j=>j.sourceIndex===i?{...j,projectId:project.id}:j));
@@ -228,7 +235,8 @@ async function openBatchResult(job:BatchJob):Promise<Project|undefined>{
   let imageData=job.thumbnail;
   if(file)imageData=await new Promise<string>(resolve=>{const fr=new FileReader();fr.onload=()=>resolve(String(fr.result));fr.readAsDataURL(file)});
   const now=Date.now();
-  const project:Project={...blank(),id:crypto.randomUUID(),name:job.fileName.replace(/\.[^.]+$/,''),createdAt:now,updatedAt:now,originalName:job.fileName,imageData,lines:cloneLines(job.lines),connections:findConnectionCandidates(job.lines,p.settings.connectDistance),warnings:analyze(job.lines),sticks:recommendSticks(job.lines),settings:{...p.settings}};
+  const work=imageWorkSize(job.width,job.height);
+  const project:Project={...blank(),id:crypto.randomUUID(),name:job.fileName.replace(/\.[^.]+$/,''),createdAt:now,updatedAt:now,originalName:job.fileName,imageData,widthMm:work.widthMm,heightMm:work.heightMm,lines:cloneLines(job.lines),connections:findConnectionCandidates(job.lines,p.settings.connectDistance),warnings:analyze(job.lines),sticks:recommendSticks(job.lines),settings:{...p.settings}};
   await saveProject(project);
   setProjects(xs=>[project,...xs.filter(x=>x.id!==project.id)]);
   setP(project);setProductionPlan(project.productionPlan??null);setProductionSelected(0);setBatchOpen(false);return project
