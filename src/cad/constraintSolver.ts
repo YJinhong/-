@@ -1,7 +1,7 @@
 import type{CADConstraint,Line}from'../types';
 
 export type ConstraintSolveResult={lines:Line[];residuals:{id:string;error:number}[];conflicts:string[]};
-export type ConstraintDiagnostic={id:string;error:number;severity:'ok'|'warning'|'conflict';conflictingIds:string[];improvement:number};
+export type ConstraintDiagnostic={id:string;error:number;severity:'ok'|'warning'|'conflict';conflictingIds:string[];improvement:number;priority:number;recommendedDisable:boolean};
 
 const clone=(lines:Line[])=>lines.map(l=>({...l,points:l.points.map(p=>({...p}))}));
 
@@ -77,22 +77,30 @@ export function diagnoseConstraints(input:Line[],constraints:CADConstraint[],w:n
  const active=constraints.filter(c=>c.enabled!==false);
  if(!active.length)return [];
  const baseline=solveConstraints(input,active,w,h,iterations);
- const baseErr=new Map(baseline.residuals.map(r=>[r.id,r.error]));
- const diagnostics=active.map(c=>{
+ const baseMap=new Map(baseline.residuals.map(r=>[r.id,r.error]));
+ const total=(rs:{id:string;error:number}[])=>rs.reduce((n,r)=>n+r.error,0);
+ const baseTotal=total(baseline.residuals);
+ const tests=active.map(c=>{
   const others=active.filter(x=>x.id!==c.id);
-  const without=solveConstraints(input,others,w,h,iterations);
-  const remainingMax=without.residuals.reduce((m,r)=>Math.max(m,r.error),0);
-  const current=baseErr.get(c.id)??0;
-  const improvement=Math.max(0,current-remainingMax);
-  const conflictingIds=without.residuals.filter(r=>r.error>.05).map(r=>r.id);
-  const severity=current>.5&&improvement>.05?'conflict':current>.05?'warning':'ok';
-  return{id:c.id,error:current,severity,conflictingIds,improvement};
+  const result=solveConstraints(input,others,w,h,iterations);
+  return{c,result,relief:Math.max(0,baseTotal-total(result.residuals))};
  });
- for(const d of diagnostics){
-  if(d.severity==='conflict'){
-   const connected=active.filter(c=>d.conflictingIds.includes(c.id)||c.id===d.id).map(c=>c.id);
-   d.conflictingIds=Array.from(new Set(connected));
+ const bestRelief=Math.max(0,...tests.map(x=>x.relief));
+ return active.map(c=>{
+  const current=baseMap.get(c.id)??0;
+  const test=tests.find(x=>x.c.id===c.id)!;
+  const severity=current>.5&&test.relief>.05?'conflict':current>.05?'warning':'ok';
+  const related=new Set<string>();
+  if(severity==='conflict'){
+   related.add(c.id);
+   if(c.referenceLineId){
+    active.filter(x=>x.lineId===c.referenceLineId||x.referenceLineId===c.lineId).forEach(x=>related.add(x.id));
+   }
+   tests.filter(x=>x.relief>.05).sort((a,b)=>b.relief-a.relief).slice(0,4).forEach(x=>{
+    if(x.c.id!==c.id&&Math.abs(x.relief-test.relief)<Math.max(.5,test.relief*.75))related.add(x.c.id);
+   });
   }
- }
- return diagnostics;
+  const priority=severity==='conflict'?Math.round(Math.min(100,(test.relief/Math.max(.01,bestRelief))*70+(current/Math.max(.01,baseTotal))*30)):severity==='warning'?30:0;
+  return{id:c.id,error:current,severity,conflictingIds:Array.from(related),improvement:test.relief,priority,recommendedDisable:severity==='conflict'&&test.relief>=bestRelief*.8};
+ });
 }
