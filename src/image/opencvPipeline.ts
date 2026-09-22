@@ -20,7 +20,7 @@ export async function opencvSugarMask(file:File,detail:'low'|'balanced'|'high'='
   cv.bitwise_and(edges,foreground,combined);cv.bitwise_or(combined,boundary,combined);
   const out=new Uint8ClampedArray(w*h*4),fd=foreground.data as Uint8Array,ed=combined.data as Uint8Array;for(let i=0;i<w*h;i++){const on=ed[i]>0?0:255;out[i*4]=on;out[i*4+1]=on;out[i*4+2]=on;out[i*4+3]=255}
   return{imageData:new ImageData(out,w,h),width:w,height:h,foregroundRatio:Array.from(fd).reduce((n,v)=>n+(v>0?1:0),0)/(w*h)}
- }finally{src.delete();rgb.delete();lab.delete();blur.delete();foreground.delete();edges.delete();boundary.delete();combined.delete()}
+ }finally{src.delete();rgb.delete();lab.delete();blur.delete();foreground.delete();edges.delete();boundary.delete();combined.delete();score?.delete?.()}
 }
 
 export async function opencvSugarMaskFile(file:File,detail:'low'|'balanced'|'high'='balanced'){
