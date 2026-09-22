@@ -1,0 +1,1 @@
+import type{Line,OptimizationSettings}from'../types';import{optimize}from'../algorithms/sugarOptimizer';export function sugarArtify(lines:Line[],settings:OptimizationSettings){return optimize(lines,settings)}
