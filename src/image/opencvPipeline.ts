@@ -8,19 +8,19 @@ function borderBackgroundLab(lab:any,w:number,h:number,cv:OpenCVModule){const da
 export async function opencvThreshold(gray:Uint8Array,width:number,height:number,threshold=165){const cv=await loadOpenCV(),src=new cv.Mat(height,width,cv.CV_8UC1),dst=new cv.Mat();src.data.set(gray);cv.threshold(src,dst,threshold,255,cv.THRESH_BINARY_INV);const out=new Uint8Array(dst.data);const copy=new Uint8Array(out);src.delete();dst.delete();return copy}
 
 export async function opencvSugarMask(file:File,detail:'low'|'balanced'|'high'='balanced'){
- const cv=await loadOpenCV(),{cvMat:src,width:w,height:h}=await imageToMat(file,cv),lab=new cv.Mat(),blur=new cv.Mat(),adaptive=new cv.Mat(),foreground=new cv.Mat(),edges=new cv.Mat(),combined=new cv.Mat();
+ const cv=await loadOpenCV(),{cvMat:src,width:w,height:h}=await imageToMat(file,cv),rgb=new cv.Mat(),lab=new cv.Mat(),blur=new cv.Mat(),foreground=new cv.Mat(),edges=new cv.Mat(),boundary=new cv.Mat(),combined=new cv.Mat();
  try{
-  cv.cvtColor(src,lab,cv.COLOR_RGBA2RGB);cv.cvtColor(lab,lab,cv.COLOR_RGB2Lab);cv.GaussianBlur(lab,blur,new cv.Size(5,5),0,0,cv.BORDER_DEFAULT);
+  cv.cvtColor(src,rgb,cv.COLOR_RGBA2RGB);cv.cvtColor(rgb,lab,cv.COLOR_RGB2Lab);cv.GaussianBlur(lab,blur,new cv.Size(5,5),0,0,cv.BORDER_DEFAULT);
   const bg=borderBackgroundLab(blur,w,h,cv),data=blur.data,params=detailParams(detail),score=new cv.Mat(h,w,cv.CV_8UC1);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*3,cd=Math.min(255,Math.hypot(data[i]-bg[0],data[i+1]-bg[1],data[i+2]-bg[2])*2.4),center=1-Math.min(1,Math.hypot(x-w/2,y-h/2)/(Math.hypot(w/2,h/2)*.9));score.data[y*w+x]=Math.min(255,cd*.78+center*55)}
   cv.threshold(score,foreground,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU);
-  const k=cv.getStructuringElement(cv.MORPH_ELLIPSE,new cv.Size(params.close,params.close));cv.morphologyEx(foreground,foreground,cv.MORPH_CLOSE,k);cv.morphologyEx(foreground,foreground,cv.MORPH_OPEN,k);k.delete();
+  const k=cv.getStructuringElement(cv.MORPH_ELLIPSE,new cv.Size(params.close,params.close));cv.morphologyEx(foreground,foreground,cv.MORPH_CLOSE,k);cv.morphologyEx(foreground,foreground,cv.MORPH_OPEN,k);cv.morphologyEx(foreground,boundary,cv.MORPH_GRADIENT,k);k.delete();
   cv.cvtColor(src,edges,cv.COLOR_RGBA2GRAY);cv.GaussianBlur(edges,edges,new cv.Size(params.blur,params.blur),0);
   cv.Canny(edges,edges,detail==='low'?75:55,detail==='high'?155:135,3,false);
-  cv.bitwise_and(edges,foreground,combined);
-  const out=new Uint8ClampedArray(w*h*4),fd=foreground.data as Uint8Array,ed=combined.data as Uint8Array;for(let i=0;i<w*h;i++){const on=fd[i]>0||ed[i]>0?0:255;out[i*4]=on;out[i*4+1]=on;out[i*4+2]=on;out[i*4+3]=255}
+  cv.bitwise_and(edges,foreground,combined);cv.bitwise_or(combined,boundary,combined);
+  const out=new Uint8ClampedArray(w*h*4),fd=foreground.data as Uint8Array,ed=combined.data as Uint8Array;for(let i=0;i<w*h;i++){const on=ed[i]>0?0:255;out[i*4]=on;out[i*4+1]=on;out[i*4+2]=on;out[i*4+3]=255}
   return{imageData:new ImageData(out,w,h),width:w,height:h,foregroundRatio:Array.from(fd).reduce((n,v)=>n+(v>0?1:0),0)/(w*h)}
- }finally{src.delete();lab.delete();blur.delete();adaptive.delete();foreground.delete();edges.delete();combined.delete()}
+ }finally{src.delete();rgb.delete();lab.delete();blur.delete();foreground.delete();edges.delete();boundary.delete();combined.delete()}
 }
 
 export async function opencvSugarMaskFile(file:File,detail:'low'|'balanced'|'high'='balanced'){
