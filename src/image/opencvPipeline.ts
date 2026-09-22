@@ -18,7 +18,7 @@ export async function opencvSugarMask(file:File,detail:'low'|'balanced'|'high'='
   cv.cvtColor(src,edges,cv.COLOR_RGBA2GRAY);cv.GaussianBlur(edges,edges,new cv.Size(params.blur,params.blur),0);
   cv.Canny(edges,edges,detail==='low'?75:55,detail==='high'?155:135,3,false);
   cv.bitwise_and(edges,foreground,combined);
-  const out=new Uint8ClampedArray(w*h*4),fd=foreground.data,ed=combined.data;for(let i=0;i<w*h;i++){const on=fd[i]>0||ed[i]>0?0:255;out[i*4]=on;out[i*4+1]=on;out[i*4+2]=on;out[i*4+3]=255}
+  const out=new Uint8ClampedArray(w*h*4),fd=foreground.data as Uint8Array,ed=combined.data as Uint8Array;for(let i=0;i<w*h;i++){const on=fd[i]>0||ed[i]>0?0:255;out[i*4]=on;out[i*4+1]=on;out[i*4+2]=on;out[i*4+3]=255}
   return{imageData:new ImageData(out,w,h),width:w,height:h,foregroundRatio:Array.from(fd).reduce((n,v)=>n+(v>0?1:0),0)/(w*h)}
  }finally{src.delete();lab.delete();blur.delete();adaptive.delete();foreground.delete();edges.delete();combined.delete()}
 }
