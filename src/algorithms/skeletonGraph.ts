@@ -78,16 +78,36 @@ function componentEdges(edges:GraphEdge[]):GraphEdge[][]{
  return out;
 }
 
+function pairOddNodesByDistance(odd:string[],nodes:Map<string,Point>):[string,string][]{
+ const remaining=new Set(odd),pairs:[string,string][]=[];
+ while(remaining.size>1){
+  const a=remaining.values().next().value as string;
+  remaining.delete(a);
+  let best:string|undefined,bestDistance=Infinity;
+  for(const b of remaining){
+   const da=nodes.get(a)!,db=nodes.get(b)!;
+   const distance=d(da,db);
+   if(distance<bestDistance){best=b;bestDistance=distance}
+  }
+  if(best){remaining.delete(best);pairs.push([a,best])}
+ }
+ return pairs;
+}
+
 function minimumTrailsForComponent(lines:Line[],edges:GraphEdge[]):Line[][]{
  if(!edges.length)return[];
- const degree=new Map<string,number>();
+ const degree=new Map<string,number>(),points=new Map<string,Point>();
  const inc=(n:string)=>degree.set(n,(degree.get(n)??0)+1);
  edges.forEach(e=>{inc(e.a);inc(e.b)});
+ for(const e of edges){
+  const a=lines.find(l=>l.id===e.lineId);
+  if(a){points.set(e.a,a.points[0]);points.set(e.b,a.points.at(-1)!)}
+ }
  const odd=[...degree.entries()].filter(([,v])=>v%2===1).map(([n])=>n);
  const artificial=new Set<string>();
  const work=edges.map(e=>({...e}));
- for(let i=0;i+1<odd.length;i+=2){
-  const id=crypto.randomUUID();work.push({lineId:id,a:odd[i],b:odd[i+1]});artificial.add(id);
+ for(const [a,b] of pairOddNodesByDistance(odd,points)){
+  const id=crypto.randomUUID();work.push({lineId:id,a,b});artificial.add(id);
  }
  const byNode=new Map<string,GraphEdge[]>();
  for(const e of work){(byNode.get(e.a)??(byNode.set(e.a,[]),byNode.get(e.a)!)).push(e);(byNode.get(e.b)??(byNode.set(e.b,[]),byNode.get(e.b)!)).push(e)}
@@ -102,15 +122,39 @@ function minimumTrailsForComponent(lines:Line[],edges:GraphEdge[]):Line[][]{
  }
  const directed=circuit.reverse(),trails:{edge:GraphEdge;from:string;to:string}[][]=[];let current:{edge:GraphEdge;from:string;to:string}[]=[];
  for(const step of directed){
-  if(artificial.has(step.edge.lineId)){
-   if(current.length)trails.push(current);current=[];
-  }else current.push(step);
+  if(artificial.has(step.edge.lineId)){if(current.length)trails.push(current);current=[]}
+  else current.push(step);
  }
  if(current.length)trails.push(current);
  return trails.map(t=>t.map(z=>{
   const l=byId.get(z.edge.lineId)!;
   return z.edge.a===z.from&&z.edge.b===z.to?l:reverse(l);
  })).filter(t=>t.length);
+}
+
+function trailEndpoints(trail:Line[]){return{start:trail[0].points[0],end:trail.at(-1)!.points.at(-1)!}}
+function reverseTrail(trail:Line[]){return trail.slice().reverse().map(reverse)}
+function trailTravel(a:Point,b:Point){return d(a,b)}
+
+function optimizeTrailOrder(trails:Line[][]):{trails:Line[][];travelLength:number}{
+ if(trails.length<2)return{trails,travelLength:0};
+ const remaining=trails.slice(),ordered:Line[][]=[];
+ let current=remaining.shift()!,travelLength=0;
+ ordered.push(current);
+ while(remaining.length){
+  const end=trailEndpoints(current).end;
+  let bestIndex=0,bestReverse=false,bestDistance=Infinity;
+  remaining.forEach((trail,i)=>{
+   const ep=trailEndpoints(trail);
+   const ds=trailTravel(end,ep.start),de=trailTravel(end,ep.end);
+   if(ds<bestDistance){bestIndex=i;bestReverse=false;bestDistance=ds}
+   if(de<bestDistance){bestIndex=i;bestReverse=true;bestDistance=de}
+  });
+  const next=remaining.splice(bestIndex,1)[0];
+  const oriented=bestReverse?reverseTrail(next):next;
+  travelLength+=bestDistance;ordered.push(oriented);current=oriented;
+ }
+ return{trails:ordered,travelLength};
 }
 
 export function trailDecomposition(lines:Line[],radius=.018):Line[][]{
