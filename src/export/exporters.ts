@@ -31,27 +31,16 @@ export async function planPdf(p:Project){
  page.drawRectangle({x:ox,y:oy,width:p.widthMm*scale,height:p.heightMm*scale,borderWidth:.5,borderColor:rgb(.82,.83,.86)});
  const px=(q:{x:number;y:number})=>ox+(q.x+.5)*p.widthMm*scale;
  const py=(q:{x:number;y:number})=>oy+(q.y+.5)*p.heightMm*scale;
- let order=1;
- for(const l of p.lines){
-  for(let i=1;i<l.points.length;i++){
-   const a=l.points[i-1],b=l.points[i];
-   page.drawLine({start:{x:px(a),y:py(a)},end:{x:px(b),y:py(b)},thickness:Math.max(.6,Math.min(5,l.width*scale)),color:rgb(.05,.05,.06)});
-  }
-  if(l.points.length){
-   const first=l.points[0];
-   pdfLabel(page,px(first),py(first),String(order++),font);
-  }
- }
+ p.lines.forEach((l,idx)=>{
+  for(let i=1;i<l.points.length;i++){const a=l.points[i-1],b=l.points[i];page.drawLine({start:{x:px(a),y:py(a)},end:{x:px(b),y:py(b)},thickness:Math.max(.6,Math.min(5,l.width*scale)),color:rgb(.05,.05,.06)})}
+  if(l.points.length)pdfLabel(page,px(l.points[0]),py(l.points[0]),String(idx+1),font);
+ });
  p.sticks.forEach((st,idx)=>{
-  const en=supportStickEndpoint(st,p.widthMm,p.heightMm);
-  const x1=px(st),y1=py(st),x2=px(en),y2=py(en);
+  const en=supportStickEndpoint(st,p.widthMm,p.heightMm),x1=px(st),y1=py(st),x2=px(en),y2=py(en);
   page.drawLine({start:{x:x1,y:y1},end:{x:x2,y:y2},thickness:.8,color:rgb(.1,.65,.4),dashArray:[3,2]});
-  const mx=(x1+x2)/2,my=(y1+y2)/2;
-  pdfLabel(page,mx,my,'S'+(idx+1),font);
-  const angle=st.angle.toFixed(1)+'°';
-  const length=st.length.toFixed(1)+' mm';
+  const mx=(x1+x2)/2,my=(y1+y2)/2;pdfLabel(page,mx,my,'S'+(idx+1),font);
   const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
-  page.drawText(length+' · '+angle,{x:mx+nx*9,y:my+ny*9-2,size:6,font,color:rgb(.08,.42,.27)});
+  page.drawText(st.length.toFixed(1)+' mm · '+st.angle.toFixed(1)+'°',{x:mx+nx*9,y:my+ny*9-2,size:6,font,color:rgb(.08,.42,.27)});
  });
  const dimGap=18;
  pdfDimLine(page,ox,oy-dimGap,ox+p.widthMm*scale,oy-dimGap,p.widthMm.toFixed(1)+' mm',font);
@@ -70,6 +59,53 @@ export async function planPdf(p:Project){
  y-=4;page.drawText('WARNINGS',{x:margin,y,size:10,font});y-=15;
  for(const w of p.warnings.slice(0,5)){page.drawText((w.severity.toUpperCase()+': '+w.message).slice(0,90),{x:margin,y,size:8,font});y-=12}
  page.drawText('Structural analysis is geometric/heuristic; it is not a material mechanics simulation.',{x:margin,y:24,size:7,font,color:rgb(.45,.45,.48)});
+
+ // Page 2: detailed step-by-step production instructions.
+ const detail=doc.addPage([pageW,pageH]);
+ detail.drawText('SUGAR DRAW · DETAILED PRODUCTION STEPS',{x:margin,y:pageH-margin,size:18,font,color:rgb(.08,.08,.1)});
+ detail.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-22,size:10,font,color:rgb(.3,.3,.34)});
+ let dy=pageH-margin-48;
+ detail.drawText('Path sequence, segment length, nodes and pen-lift guidance',{x:margin,y:dy,size:9,font,color:rgb(.35,.35,.4)});
+ dy-=22;
+ const segLength=(l:Line)=>{
+  let n=0;for(let i=1;i<l.points.length;i++)n+=Math.hypot((l.points[i].x-l.points[i-1].x)*p.widthMm,(l.points[i].y-l.points[i-1].y)*p.heightMm);return n;
+ };
+ const endpointConnections=(l:Line,at:'start'|'end')=>{
+  const pt=at==='start'?l.points[0]:l.points[l.points.length-1]; if(!pt)return 0;
+  return p.connections.filter(c=>(c.a===l.id&&c.aEnd===at)||(c.b===l.id&&c.bEnd===at)).length;
+ };
+ detail.drawText('STEP', {x:margin,y:dy,size:8,font});
+ detail.drawText('LINE / LENGTH', {x:90,y:dy,size:8,font});
+ detail.drawText('START NODE', {x:220,y:dy,size:8,font});
+ detail.drawText('END NODE', {x:325,y:dy,size:8,font});
+ detail.drawText('ACTION', {x:430,y:dy,size:8,font});
+ dy-=12;
+ p.lines.forEach((l,idx)=>{
+  if(dy<48){return}
+  const start=l.points[0],end=l.points[l.points.length-1],len=segLength(l);
+  const sc=endpointConnections(l,'start'),ec=endpointConnections(l,'end');
+  const action=l.closed?'Complete closed path; no lift until closure.':(ec>0?'Finish at connected node; continue if the next step is accepted.':'Lift after endpoint; move to next step.');
+  detail.drawText(String(idx+1),{x:margin,y:dy,size:8,font});
+  detail.drawText(('L'+(idx+1)+' · '+len.toFixed(1)+' mm').slice(0,24),{x:90,y:dy,size:8,font});
+  detail.drawText((start?('('+start.x.toFixed(3)+', '+start.y.toFixed(3)+') · '+sc+' link'): '—').slice(0,31),{x:220,y:dy,size:7,font});
+  detail.drawText((end?('('+end.x.toFixed(3)+', '+end.y.toFixed(3)+') · '+ec+' link'): '—').slice(0,31),{x:325,y:dy,size:7,font});
+  detail.drawText(action.slice(0,28),{x:430,y:dy,size:7,font});
+  dy-=15;
+ });
+ dy-=6;
+ detail.drawText('CONNECTION / NODE MAP',{x:margin,y:dy,size:10,font});dy-=15;
+ p.connections.slice(0,24).forEach((c,idx)=>{
+  if(dy<48)return;
+  const status=c.status.toUpperCase();
+  detail.drawText('N'+(idx+1)+' · '+c.a+' ('+c.aEnd+') ↔ '+c.b+' ('+c.bEnd+') · '+c.distance.toFixed(2)+' · '+status,{x:margin,y:dy,size:7,font});
+  dy-=12;
+ });
+ if(dy>=60){
+  dy-=4;detail.drawText('PEN CONTROL',{x:margin,y:dy,size:10,font});dy-=15;
+  detail.drawText('START: begin at the numbered start node. CONTINUE: keep contact through accepted connections. LIFT: lift the tool after an open endpoint with no accepted connection.',{x:margin,y:dy,size:7,font});
+  dy-=13;
+  detail.drawText('Connection suggestions are geometric; manually verify every joint before production.',{x:margin,y:dy,size:7,font,color:rgb(.45,.45,.48)});
+ }
  saveAs(new Blob([await doc.save()],{type:'application/pdf'}),p.name+'-plan.pdf')
 }
 export function projectJson(p:Project){return JSON.stringify({version:1,exportedAt:new Date().toISOString(),project:p},null,2)}
