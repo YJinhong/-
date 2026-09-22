@@ -261,18 +261,19 @@ function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connection
  function rebuildProductionPlan(){setProductionPlan(buildProductionPlan(p));setProductionSelected(0)}
  function moveProductionStep(from:number,to:number){
   setProductionPlan(q=>{
-   if(!q||to<0||to>=q.steps.length)return q;
+   if(!q||from<0||from>=q.steps.length||to<0||to>=q.steps.length)return q;
    const steps=[...q.steps],moved=steps.splice(from,1)[0];
    if(!moved)return q;
    steps.splice(to,0,moved);
-   return {...q,steps:steps.map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}))};
+   const next=steps.map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}));
+   return {...q,steps:next,estimatedPenLifts:Math.max(0,next.length-1),totalLengthMm:Math.round(next.reduce((n,s)=>n+s.lengthMm,0)*10)/10};
   });
  }
  function deleteProductionStep(index:number){
   setProductionPlan(q=>{
-   if(!q)return q;
+   if(!q||index<0||index>=q.steps.length)return q;
    const steps=q.steps.filter((_,i)=>i!==index).map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}));
-   return {...q,steps,estimatedPenLifts:Math.max(0,steps.length-1)};
+   return {...q,steps,estimatedPenLifts:Math.max(0,steps.length-1),totalLengthMm:Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10,summary:[steps.length+' drawing segments',Math.max(0,steps.length-1)+' estimated pen lifts',Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10+' mm total path',q.summary[3]??'',q.summary[4]??'']};
   });
  }
  function runOptimize(){const r=sugarArtify(p.lines,p.settings);const path=minimumPenLiftPath(r.lines);const lines=path.order;const connections=findConnectionCandidates(lines,p.settings.connectDistance);const graph=rebuildGraph(lines);setP(q=>({...q,lines,connections,warnings:[...analyze(lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))],sticks:recommendSticks(lines),history:[...q.history,snapshot('Sugar Artify + graph rebuild',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}))}
@@ -468,7 +469,7 @@ function deleteCurrentProject(){if(!confirm('Delete this project?'))return;const
 function renameProject(){const name=window.prompt('Project name',p.name);if(name?.trim())setP(q=>({...q,name:name.trim(),updatedAt:Date.now()}))}
 function saveVersion(label='Manual version'){setP(q=>({...q,history:[...q.history,snapshot(label,q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}))}
 function restoreVersion(id:string){const v=p.history.find(x=>x.id===id);if(!v)return;setP(q=>({...q,lines:cloneLines(v.lines),sticks:v.sticks?.map(s=>({...s}))??q.sticks,constraints:v.constraints?.map(c=>({...c}))??q.constraints,connections:v.connections?.map(c=>({...c}))??findConnectionCandidates(v.lines,q.settings.connectDistance),productionPlan:v.productionPlan?JSON.parse(JSON.stringify(v.productionPlan)):undefined,history:[...q.history,snapshot('Before restore',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}));setProductionPlan(v.productionPlan?JSON.parse(JSON.stringify(v.productionPlan)):null);setProductionSelected(0)}
-function duplicateVersion(id:string){const v=p.history.find(x=>x.id===id);if(!v)return;setP(q=>({...q,history:[...q.history,{...v,id:crypto.randomUUID(),createdAt:Date.now(),label:v.label+' Copy',lines:cloneLines(v.lines),sticks:v.sticks?.map(s=>({...s}))??[],constraints:v.constraints?.map(c=>({...c})),productionPlan:v.productionPlan?JSON.parse(JSON.stringify(v.productionPlan)):undefined}],updatedAt:Date.now()}))}
+function duplicateVersion(id:string){const v=p.history.find(x=>x.id===id);if(!v)return;const stickMap=new Map<string,string>();const sticks=v.sticks?.map(s=>{const next=crypto.randomUUID();stickMap.set(s.id,next);return{...s,id:next}})??[];const productionPlan=v.productionPlan?{...JSON.parse(JSON.stringify(v.productionPlan)),steps:v.productionPlan.steps.map(s=>({...s,supportStickId:s.supportStickId?(stickMap.get(s.supportStickId)??s.supportStickId):undefined}))}:undefined;const connections=v.connections?.map(c=>({...c,id:crypto.randomUUID()}));setP(q=>({...q,history:[...q.history,{...v,id:crypto.randomUUID(),createdAt:Date.now(),label:v.label+' Copy',lines:cloneLines(v.lines),sticks,constraints:v.constraints?.map(c=>({...c})),connections,productionPlan}],updatedAt:Date.now()}))}
  const pathResult=minimumPenLiftPath(p.lines),drawingOrder=pathResult.order,pending=p.connections.filter(c=>c.status==='pending'),accepted=p.connections.filter(c=>c.status==='accepted'),rejected=p.connections.filter(c=>c.status==='rejected'),progress=drawingOrder.length?Math.min(100,Math.round(playIndex/drawingOrder.length*100)):0;
  return <div className={dark?'app dark':'app'}><header><div className="brand"><div className="logo">S</div><div><b>SugarDraw</b><small>Buildable sugar art</small></div></div><nav className="menuBar">
  <div className="menuWrap"><button onClick={()=>setMenu(menu==='file'?null:'file')}>File</button>{menu==='file'&&<div className="menuPopup">
