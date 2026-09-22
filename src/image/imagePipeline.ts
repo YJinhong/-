@@ -100,10 +100,10 @@ async function smartContours(file:File,detail:'low'|'balanced'|'high',onProgress
   cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
   cv.threshold(gray,bin,250,255,cv.THRESH_BINARY_INV);
   cv.findContours(bin,cs,hier,cv.RETR_LIST,cv.CHAIN_APPROX_NONE);onProgress?.(60);
-  const minArea=Math.max(12,result.width*result.height*(detail==='low'?.00005:detail==='high'?.00002:.000035));
+  const minArea=Math.max(4,result.width*result.height*(detail==='low'?.000025:detail==='high'?.00001:.000018));
   for(let i=0;i<cs.size();i++){
    const c=cs.get(i),area=Math.abs(cv.contourArea(c)),per=cv.arcLength(c,true);
-   if(area<minArea||per<30){c.delete();continue}
+   if(per<18||(area<minArea&&per<72)){c.delete();continue}
    const approx=new cv.Mat(),eps=per*(detail==='low'?.012:detail==='high'?.004:.007);
    cv.approxPolyDP(c,approx,eps,true);
    const pts:Point[]=[];
@@ -135,7 +135,11 @@ export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='ba
  for(let i=0;i<w*h;i++)g[i]=Math.round(.299*d.data[i*4]+.587*d.data[i*4+1]+.114*d.data[i*4+2]);
  const t=detail==='low'?145:detail==='high'?185:165,b=new Uint8Array(w*h);
  for(let i=0;i<g.length;i++)b[i]=g[i]<t?1:0;
- const cs=contours(thin(b,w,h),w,h),lines:Line[]=[];onProgress?.(75);
- for(const p of cs){const q=rdp(p,detail==='low'?.010:detail==='high'?.003:.006);if(q.length>=3)lines.push({id:crypto.randomUUID(),points:q,width:3.5})}
+ const collect=(mask:Uint8Array)=>{const found=contours(thin(mask,w,h),w,h);for(const p of found){const q=rdp(p,detail==='low'?.010:detail==='high'?.003:.006);if(q.length>=3)lines.push({id:crypto.randomUUID(),points:q,width:3.5})}};
+ collect(b);
+ if(lines.length===0){
+  const thresholds=detail==='low'?[115,145,175]:detail==='high'?[145,175,205]:[125,155,185];
+  for(const threshold of thresholds){const alt=new Uint8Array(w*h);for(let i=0;i<g.length;i++)alt[i]=g[i]<threshold?1:0;collect(alt);if(lines.length>=2)break}
+ }
  onProgress?.(100);return lines;
 }
