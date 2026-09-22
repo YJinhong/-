@@ -16,7 +16,7 @@ function pdfLabel(page:any,x:number,y:number,label:string,font:any){
  page.drawCircle({x,y,size:7,borderWidth:.6,borderColor:rgb(.15,.55,.35),color:rgb(.94,.98,.95)});
  page.drawText(label,{x:x-font.widthOfTextAtSize(label,6)/2,y:y-2,size:6,font,color:rgb(.08,.35,.22)});
 }
-export async function planPdf(p:Project){
+export async function planPdfBytes(p:Project){
  const doc=await PDFDocument.create();
  const font=await doc.embedFont(StandardFonts.Helvetica);
  const pageW=595,pageH=842,margin=36;
@@ -125,7 +125,26 @@ export async function planPdf(p:Project){
  detail.drawText('PEN CONTROL',{x:margin,y:ey,size:10,font});ey-=15;
  detail.drawText('START: begin at the numbered start node. CONTINUE: keep contact through accepted connections. LIFT: lift the tool after an open endpoint with no accepted connection.',{x:margin,y:ey,size:7,font});ey-=13;
  detail.drawText('Connection suggestions are geometric; manually verify every joint before production.',{x:margin,y:ey,size:7,font,color:rgb(.45,.45,.48)});
- saveAs(new Blob([await doc.save()],{type:'application/pdf'}),p.name+'-plan.pdf')
+ return await doc.save()
+}
+export async function planPdf(p:Project){
+ const bytes=await planPdfBytes(p);
+ saveAs(new Blob([bytes],{type:'application/pdf'}),p.name+'-plan.pdf')
 }
 export function projectJson(p:Project){return JSON.stringify({version:1,exportedAt:new Date().toISOString(),project:p},null,2)}
-export async function zipProjects(ps:Project[]){const z=new JSZip();for(const p of ps){z.file(p.name+'.svg',svg(p));const img=new Image();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg(p));await new Promise<void>(r=>{img.onload=()=>r();img.onerror=()=>r()});const c=document.createElement('canvas'),scale=3;c.width=Math.max(1,Math.round(p.widthMm*scale));c.height=Math.max(1,Math.round(p.heightMm*scale));c.getContext('2d')!.drawImage(img,0,0,c.width,c.height);const png=await new Promise<Blob|null>(r=>c.toBlob(r,'image/png'));if(png)z.file(p.name+'.png',await png.arrayBuffer());const doc=await PDFDocument.create(),page=doc.addPage([595,842]),font=await doc.embedFont(StandardFonts.Helvetica);page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:40,y:800,size:18,font});let y=770;for(const line of planText(p).split('\n').slice(1,42)){page.drawText(line.slice(0,105),{x:40,y,size:10,font});y-=16}z.file(p.name+'-plan.pdf',await doc.save());z.file(p.name+'.json',projectJson(p))}saveAs(await z.generateAsync({type:'blob'}),'SugarDraw_Export.zip')}
+export async function zipProjects(ps:Project[]){
+ const z=new JSZip();
+ for(const p of ps){
+  z.file(p.name+'.svg',svg(p));
+  const img=new Image();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg(p));
+  await new Promise<void>(r=>{img.onload=()=>r();img.onerror=()=>r()});
+  const c=document.createElement('canvas'),scale=3;
+  c.width=Math.max(1,Math.round(p.widthMm*scale));c.height=Math.max(1,Math.round(p.heightMm*scale));
+  c.getContext('2d')!.drawImage(img,0,0,c.width,c.height);
+  const png=await new Promise<Blob|null>(r=>c.toBlob(r,'image/png'));
+  if(png)z.file(p.name+'.png',await png.arrayBuffer());
+  z.file(p.name+'-plan.pdf',await planPdfBytes(p));
+  z.file(p.name+'.json',projectJson(p));
+ }
+ saveAs(await z.generateAsync({type:'blob'}),'SugarDraw_Export.zip')
+}
