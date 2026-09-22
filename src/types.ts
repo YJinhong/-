@@ -1,6 +1,7 @@
 export type Point={x:number;y:number};
 export type Line={id:string;points:Point[];width:number;closed?:boolean};
-export type ConnectionCandidate={id:string;a:string;b:string;distance:number;angle:number;reason:string;status:'pending'|'accepted'|'rejected'};
+export type Endpoint='start'|'end';
+export type ConnectionCandidate={id:string;a:string;b:string;aEnd:Endpoint;bEnd:Endpoint;distance:number;angle:number;reason:string;status:'pending'|'accepted'|'rejected'};
 export type StructuralWarning={id:string;severity:'low'|'medium'|'high';message:string;lineIds:string[]};
 export type SupportStick={id:string;x:number;y:number;length:number;angle:number;score:number;kind:'recommended'|'optional'|'avoid'};
 export type OptimizationSettings={detail:'low'|'balanced'|'high';minWidthMm:number;connectDistance:number;simplifyTolerance:number};
