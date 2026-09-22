@@ -95,14 +95,14 @@ async function smartContours(file:File,detail:'low'|'balanced'|'high',onProgress
  const decoded=await decode(file);const max=1200,scale=Math.min(1,max/Math.max(decoded.width,decoded.height)),w=Math.max(32,Math.round(decoded.width*scale)),h=Math.max(32,Math.round(decoded.height*scale));
  const canvas=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):document.createElement('canvas');canvas.width=w;canvas.height=h;
  const ctx=canvas.getContext('2d',{willReadFrequently:true})!;ctx.drawImage(decoded,0,0,w,h);if(typeof ImageBitmap!=='undefined'&&decoded instanceof ImageBitmap)decoded.close();
- const rgba=ctx.getImageData(0,0,w,h),src=cv.matFromImageData(rgba),rgb=new cv.Mat(),lab=new cv.Mat(),blur=new cv.Mat(),distance=new cv.Mat(),mask=new cv.Mat(),gray=new cv.Mat(),edges=new cv.Mat(),combined=new cv.Mat();
+ const rgba=ctx.getImageData(0,0,w,h),src=cv.matFromImageData(rgba),rgb=new cv.Mat(),lab=new cv.Mat(),blur=new cv.Mat(),mask=new cv.Mat(h,w,cv.CV_8UC1),gray=new cv.Mat(),edges=new cv.Mat(),combined=new cv.Mat(),adaptive=new cv.Mat();
  try{
   cv.cvtColor(src,rgb,cv.COLOR_RGBA2RGB);cv.cvtColor(rgb,lab,cv.COLOR_RGB2Lab);cv.GaussianBlur(lab,blur,new cv.Size(5,5),0);
   const bd=blur.data,step=Math.max(1,Math.floor(Math.min(w,h)/40)),samples:number[][]=[];
   const add=(x:number,y:number)=>{const i=(y*w+x)*3;samples.push([bd[i],bd[i+1],bd[i+2]])};
   for(let x=0;x<w;x+=step){add(x,0);add(x,h-1)}for(let y=0;y<h;y+=step){add(0,y);add(w-1,y)}
   const bg=samples.reduce((a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],[0,0,0]).map(v=>v/Math.max(1,samples.length));
-  const dd=distance.data as Float32Array;let sum=0,count=0;
+  const dd=new Float32Array(w*h);let sum=0,count=0;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*3;const d=Math.hypot(bd[i]-bg[0],bd[i+1]-bg[1],bd[i+2]-bg[2]);dd[y*w+x]=d;sum+=d;count++}
   const mean=sum/Math.max(1,count);let variance=0;for(let i=0;i<dd.length;i++){const q=dd[i]-mean;variance+=q*q}
   const std=Math.sqrt(variance/Math.max(1,dd.length));const threshold=Math.max(8,mean+std*(detail==='low'?.55:detail==='high'?.8:.65));
@@ -112,11 +112,11 @@ async function smartContours(file:File,detail:'low'|'balanced'|'high',onProgress
   cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);cv.Canny(gray,edges,45,125,3,false);cv.bitwise_and(edges,mask,combined);
   onProgress?.(55);
   const candidates:[any,string][]=[[mask,'silhouette'],[combined,'internal']];
-  const adaptive=new cv.Mat();cv.adaptiveThreshold(gray,adaptive,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,detail==='low'?41:31,detail==='high'?4:7);candidates.push([adaptive,'adaptive']);
+  cv.adaptiveThreshold(gray,adaptive,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,detail==='low'?41:31,detail==='high'?4:7);candidates.push([adaptive,'adaptive']);
   const extract=(m:any,kind:string)=>{const cs=new cv.MatVector(),hier=new cv.Mat(),lines:Line[]=[];let score=0;try{cv.findContours(m,cs,hier,kind==='silhouette'?cv.RETR_EXTERNAL:cv.RETR_LIST,cv.CHAIN_APPROX_NONE);for(let i=0;i<cs.size();i++){const c=cs.get(i),per=cv.arcLength(c,true),box=cv.boundingRect(c),area=Math.abs(cv.contourArea(c));const minPer=Math.max(12,Math.min(w,h)*.018);if(per<minPer||(box.width<4&&box.height<4)){c.delete();continue}if(box.width>.995*w&&box.height>.995*h){c.delete();continue}const approx=new cv.Mat();cv.approxPolyDP(c,approx,per*(detail==='low'?.010:detail==='high'?.004:.006),true);const pts:Point[]=[];for(let j=0;j<approx.rows;j++)pts.push({x:approx.data32S[j*2]/w-.5,y:approx.data32S[j*2+1]/h-.5});approx.delete();if(pts.length<3){c.delete();continue}const coverage=area/(w*h),span=Math.hypot(box.width,box.height)/Math.hypot(w,h),sizeScore=coverage>.985?.01:Math.min(1,Math.max(.08,coverage*5));score+=per/Math.hypot(w,h)*(.5+span)*sizeScore;lines.push({id:crypto.randomUUID(),points:pts,width:3.5});c.delete();if(lines.length>=220)break}}finally{cs.delete();hier.delete()}return{lines,score:score*(1-Math.min(.7,lines.length/260))}};
   let best:Line[]=[];let bestScore=-Infinity;for(const [m,kind] of candidates){const e=extract(m,kind);const adjusted=e.score*(kind==='silhouette'?1.35:kind==='internal'?1.08:.55);if(e.lines.length&&adjusted>bestScore){best=e.lines;bestScore=adjusted}};
-  candidates.forEach(([m])=>m.delete?.());onProgress?.(95);return best;
- }finally{src.delete();rgb.delete();lab.delete();blur.delete();distance.delete();mask.delete();gray.delete();edges.delete();combined.delete()}
+  onProgress?.(95);return best.filter(l=>l.points.length>=3&&l.points.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Math.abs(p.x)<=.51&&Math.abs(p.y)<=.51));
+ }finally{src.delete();rgb.delete();lab.delete();blur.delete();mask.delete();gray.delete();edges.delete();combined.delete();adaptive.delete()}
 }
 
 function gradientMask(g:Uint8Array,w:number,h:number,multiplier:number){
@@ -137,6 +137,7 @@ export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='ba
  try{
   const smart=await smartContours(file,detail,onProgress);
   if(smart.length>0)return smart;
+  console.warn('Smart contour pipeline returned no renderable lines; using local fallback');
  }catch(e){
   if(e instanceof Error&&e.message==='BATCH_CANCELLED')throw e;
   console.warn('Smart contour pipeline unavailable, using local fallback',e);
