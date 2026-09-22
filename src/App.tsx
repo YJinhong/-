@@ -451,7 +451,7 @@ function updateStick(id:string,patch:Partial<NonNullable<Project['sticks']>[numb
  function endPoint(ev?:ReactPointerEvent<HTMLCanvasElement>){setPanDragging(false);if(cursor==='measure'&&measureStart&&ev){setMeasureEnd(canvasPoint(ev));return}if(selectionBox){const a=selectionBox.start,b=selectionBox.end;const minX=Math.min(a.x,b.x),maxX=Math.max(a.x,b.x),minY=Math.min(a.y,b.y),maxY=Math.max(a.y,b.y);const ids=p.lines.filter(l=>l.points.some(q=>q.x>=minX&&q.x<=maxX&&q.y>=minY&&q.y<=maxY)).map(l=>l.id);setSelectedLines(ids);setSelectedLine(ids.at(-1)??null);setRelationLine(ids.length>=2?ids.at(-2)??null:null);setSelectionBox(null);setDragging(false);setNodeDragging(false);setStickDragging(false);return}setDragging(false);setNodeDragging(false);setStickDragging(false);if(!snap)return;setP(q=>{const lines=q.lines.map(l=>({...l,points:l.points.map(pt=>({...pt}))}));let changed=false;for(let i=0;i<lines.length;i++)for(let j=i+1;j<lines.length;j++){for(const ai of [0,lines[i].points.length-1])for(const bj of [0,lines[j].points.length-1]){const a=lines[i].points[ai],b=lines[j].points[bj];if(Math.hypot(a.x-b.x,a.y-b.y)<.012){const m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};lines[i].points[ai]=m;lines[j].points[bj]=m;changed=true}}}if(!changed)return q;const graph=rebuildGraph(lines),warnings=[...analyze(lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))];return{...q,lines,connections:findConnectionCandidates(lines,q.settings.connectDistance),warnings,sticks:recommendSticks(lines),history:[...q.history,snapshot('Snap and merge endpoints',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}})}
 
  function exportProjectJson(){const blob=new Blob([projectJson(p)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=p.name+'.sugardraw.json';a.click();URL.revokeObjectURL(a.href)}
-async function importProjectJson(file:File){
+async async function importProjectJson(file:File){
  try{
   const data=JSON.parse(await file.text());
   const raw=data?.project??data;
@@ -460,7 +460,7 @@ async function importProjectJson(file:File){
   const imported=normalize({...raw,id:crypto.randomUUID(),name:String(raw.name||file.name.replace(/\.sugardraw\.json$|\.json$/i,'')),createdAt:now,updatedAt:now});
   await saveProject(imported);
   setProjects(xs=>[imported,...xs.filter(x=>x.id!==imported.id)]);
-  setP(imported);setSelectedLine(null);setSelectedLines([]);setRelationLine(null);setSelectedNode(null);setSelectedStick(null);
+  setP(imported);setProductionPlan(imported.productionPlan??null);setProductionSelected(0);setSelectedLine(null);setSelectedLines([]);setRelationLine(null);setSelectedNode(null);setSelectedStick(null);
  }catch(e){alert('Unable to import project: '+(e instanceof Error?e.message:String(e)))}
 }
 function newProject(){const n=blank();setP(n);setProductionPlan(null);setProductionSelected(0);setSelectedLine(null);setSelectedLines([]);setRelationLine(null);setSelectedNode(null);setSelectedStick(null)}
