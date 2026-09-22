@@ -1,32 +1,72 @@
 import type{Endpoint,Line,ConnectionCandidate,Point}from'../types';import{dist}from'./geometry';
 function endpointPoint(l:Line,e:Endpoint){return e==='start'?l.points[0]:l.points.at(-1)!}
-function angle(a:Point,b:Point){return Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI}
+function normalize(v:Point){
+ const m=Math.hypot(v.x,v.y);
+ return m<1e-9?{x:0,y:0}:{x:v.x/m,y:v.y/m};
+}
+function endpointTangent(l:Line,e:Endpoint):Point{
+ const count=l.points.length;
+ if(count<2)return{x:0,y:0};
+ const span=Math.min(6,count-1);
+ if(e==='start'){
+  const a=l.points[0],b=l.points[span];
+  return normalize({x:b.x-a.x,y:b.y-a.y});
+ }
+ const a=l.points[count-1],b=l.points[count-1-span];
+ return normalize({x:a.x-b.x,y:a.y-b.y});
+}
+function continuityAngle(a:Point,b:Point){
+ const ma=Math.hypot(a.x,a.y),mb=Math.hypot(b.x,b.y);
+ if(ma<1e-9||mb<1e-9)return 90;
+ // Endpoint tangents point inward along each source line. A smooth join
+ // therefore wants the two inward tangents to face opposite directions.
+ const dot=Math.max(-1,Math.min(1,-(a.x*b.x+a.y*b.y)/(ma*mb)));
+ return Math.acos(dot)*180/Math.PI;
+}
 function reverse(l:Line):Line{return{...l,points:[...l.points].reverse()}}
 function orient(l:Line,e:Endpoint){return e==='end'?l:reverse(l)}
 export function findConnectionCandidates(lines:Line[],maxDistance=.06):ConnectionCandidate[]{
  const out:ConnectionCandidate[]=[];
  for(let i=0;i<lines.length;i++)for(let j=i+1;j<lines.length;j++){
-  const candidates:{aEnd:Endpoint;bEnd:Endpoint;distance:number}[]=[];
+  const candidates:{aEnd:Endpoint;bEnd:Endpoint;distance:number;angle:number;cost:number}[]=[];
   for(const aEnd of ['start','end'] as Endpoint[])for(const bEnd of ['start','end'] as Endpoint[]){
    const a=endpointPoint(lines[i],aEnd),b=endpointPoint(lines[j],bEnd),distance=dist(a,b);
-   if(distance<=maxDistance)candidates.push({aEnd,bEnd,distance});
+   if(distance>maxDistance)continue;
+   const angle=continuityAngle(endpointTangent(lines[i],aEnd),endpointTangent(lines[j],bEnd));
+   // Distance remains dominant, while tangent continuity suppresses nearby
+   // endpoints that would force a sharp reversal or unrelated join.
+   const cost=.68*(distance/maxDistance)+.32*(angle/180);
+   candidates.push({aEnd,bEnd,distance,angle,cost});
   }
-  candidates.sort((a,b)=>a.distance-b.distance);
+  candidates.sort((a,b)=>a.cost-b.cost);
   const usedA=new Set<Endpoint>(),usedB=new Set<Endpoint>();
   for(const candidate of candidates){
    if(usedA.has(candidate.aEnd)||usedB.has(candidate.bEnd))continue;
    usedA.add(candidate.aEnd);usedB.add(candidate.bEnd);
-   const reason=candidate.distance<maxDistance*.45?'very close endpoints':'close endpoints';
+   // Do not hide a very close endpoint just because rasterization made its
+   // tangent noisy; only reject clearly U-turn-like joins at ordinary gaps.
+   if(candidate.angle>132&&candidate.distance>maxDistance*.35)continue;
+   const reason=candidate.angle<=30
+    ?'very close endpoints · smooth tangent'
+    :candidate.angle<=65
+      ?'close endpoints · compatible tangent'
+      :candidate.angle<=100
+        ?'close endpoints · corner join'
+        :'very close endpoints · sharp corner';
    out.push({
     id:crypto.randomUUID(),a:lines[i].id,b:lines[j].id,
     aEnd:candidate.aEnd,bEnd:candidate.bEnd,distance:candidate.distance,
-    angle:Math.abs(angle(endpointPoint(lines[i],candidate.aEnd),endpointPoint(lines[j],candidate.bEnd))),
-    reason,status:'pending'
+    angle:candidate.angle,reason,status:'pending'
    });
   }
  }
- return out.sort((a,b)=>a.distance-b.distance);
+ return out.sort((a,b)=>{
+  const ac=.68*(a.distance/Math.max(maxDistance,1e-9))+.32*(a.angle/180);
+  const bc=.68*(b.distance/Math.max(maxDistance,1e-9))+.32*(b.angle/180);
+  return ac-bc;
+ });
 }
+
 type SideRef={lineId:string;end:Endpoint};
 type Link={to:SideRef;distance:number};
 
