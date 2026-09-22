@@ -1,7 +1,14 @@
-import type {Point} from '../types';
+import type{Point}from'../types';
 
 /** Project coordinates are normalized to [-0.5, 0.5] on each axis. */
 export function pxPerMm(canvasWidth:number,canvasHeight:number,widthMm:number,heightMm:number){
+ const mobile=typeof window!=='undefined'&&window.innerWidth<=850;
+ if(mobile){
+  // Mobile uses the available width as the primary drawing scale. The workspace
+  // itself is the viewport; the drawing has no page/frame boundary and can pan freely.
+  const fit=Math.max(260,canvasWidth*.90);
+  return fit/Math.max(.001,widthMm);
+ }
  const fit=Math.min(700,Math.max(420,Math.min(canvasWidth,canvasHeight)*.42));
  return fit/Math.max(.001,widthMm,heightMm);
 }
