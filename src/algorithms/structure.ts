@@ -4,14 +4,40 @@ import{buildSkeletonGraph}from'./skeletonGraph';
 const d=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.y-b.y);
 const polyLength=(p:Point[])=>p.slice(1).reduce((s,q,i)=>s+d(p[i],q),0);
 const angle=(a:Point,b:Point)=>Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;
+const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
 const add=(out:StructuralWarning[],severity:StructuralWarning['severity'],message:string,lineIds:string[])=>out.push({id:crypto.randomUUID(),severity,message,lineIds});
+
+function tangentAt(l:Line,index:number):Point{
+ const lo=Math.max(0,index-3),hi=Math.min(l.points.length-1,index+3);
+ const a=l.points[lo]??l.points[0],b=l.points[hi]??l.points.at(-1)!;
+ return{x:b.x-a.x,y:b.y-a.y};
+}
+function curvatureAt(l:Line,index:number){
+ const t0=tangentAt(l,Math.max(0,index-2)),t1=tangentAt(l,Math.min(l.points.length-1,index+2));
+ const m0=Math.hypot(t0.x,t0.y),m1=Math.hypot(t1.x,t1.y);
+ if(m0<1e-9||m1<1e-9)return 0;
+ return Math.acos(clamp((t0.x*t1.x+t0.y*t1.y)/(m0*m1),-1,1))*180/Math.PI;
+}
+function pointToSegmentDistance(p:Point,a:Point,b:Point){
+ const dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy;
+ if(den<1e-12)return d(p,a);
+ const t=clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/den,0,1);
+ return d(p,{x:a.x+t*dx,y:a.y+t*dy});
+}
+function tooCloseToOtherLines(p:Point,sourceId:string,lines:Line[],clearance=.045){
+ for(const l of lines){
+  if(l.id===sourceId)continue;
+  for(let i=1;i<l.points.length;i++)if(pointToSegmentDistance(p,l.points[i-1],l.points[i])<clearance)return true;
+ }
+ return false;
+}
 
 export function analyze(lines:Line[]){
  const warnings:StructuralWarning[]=[];
  if(!lines.length)return warnings;
  const graph=buildSkeletonGraph(lines,.018);
  const degreeByLine=new Map<string,number>();
- graph.forEach(n=>n.lineIds.forEach(id=>degreeByLine.set(id,Math.max(degreeByLine.get(id)??0,n.degree))));
+ graph.forEach(n=>n.lineIds.forEach(id=>degreeByLine.set(id,Math.max(degreeByLine.get(id)??0,n.degree)));
 
  lines.forEach(l=>{
   if(l.points.length<2)return;
@@ -48,15 +74,63 @@ export function recommendSticks(lines:Line[]):SupportStick[]{
  if(!lines.length)return[];
  const graph=buildSkeletonGraph(lines,.018),degree=new Map<string,number>();
  graph.forEach(n=>n.lineIds.forEach(id=>degree.set(id,Math.max(degree.get(id)??0,n.degree))));
- const candidates=lines.map(l=>{
-  const len=polyLength(l.points),a=l.points[0],b=l.points.at(-1)!,da=degree.get(l.id)??1;
-  const score=Math.max(0,Math.min(100,35+Math.min(40,len*55)+(da===1?18:da>=3?8:0)-(l.width<3?15:0)));
-  const mid=l.points[Math.floor((l.points.length-1)/2)]??a;
-  return{line:l,len,score,mid,angle:angle(a,b)};
- }).filter(x=>x.len>.18).sort((a,b)=>b.score-a.score).slice(0,5);
- return candidates.map((c,i)=>({
-  id:crypto.randomUUID(),x:c.mid.x,y:c.mid.y,
-  length:Math.max(25,Math.min(70,c.len*100)),angle:c.angle+90,
-  score:Math.round(c.score),kind:i===0?'recommended':c.score>=55?'optional':'avoid'
- }));
+
+ const candidates:{line:Line;point:Point;angle:number;score:number;clearance:number}[]=[];
+ for(const line of lines){
+  const len=polyLength(line.points);
+  if(len<.18||line.points.length<3)continue;
+  const cumulative=[0];
+  for(let i=1;i<line.points.length;i++)cumulative.push(cumulative[i-1]+d(line.points[i-1],line.points[i]));
+  const total=cumulative.at(-1)!;
+  const minOffset=Math.min(.12,total*.22),maxOffset=Math.max(minOffset,total*.78);
+  for(let i=1;i<line.points.length-1;i++){
+   const s=cumulative[i];
+   if(s<minOffset||s>maxOffset)continue;
+   const p=line.points[i];
+   const curvature=curvatureAt(line,i);
+   const tangent=tangentAt(line,i);
+   const tm=Math.hypot(tangent.x,tangent.y);
+   if(tm<1e-9)continue;
+   // A support is placed perpendicular to the local tangent. Prefer a
+   // straight load-bearing span, but retain mildly curved regions.
+   const localAngle=Math.atan2(tangent.y,tangent.x)*180/Math.PI;
+   const stickAngle=localAngle+90;
+   const clearance=tooCloseToOtherLines(p,line.id,lines);
+   if(clearance)continue;
+   const endBalance=Math.min(s,total-s)/(total||1);
+   const curvaturePenalty=Math.min(1,curvature/110);
+   const widthBonus=clamp((line.width-2.5)/2.5,0,1);
+   const degreeBonus=(degree.get(line.id)??1)>=3?.12:(degree.get(line.id)??1)===1?.08:0;
+   const score=clamp(
+    42+
+    34*clamp(len/.8,0,1)+
+    16*endBalance+
+    8*widthBonus+
+    8*degreeBonus-
+    18*curvaturePenalty,0,100
+   );
+   candidates.push({line,point:p,angle:stickAngle,score,clearance:0});
+  }
+ }
+ candidates.sort((a,b)=>b.score-a.score);
+
+ const selected:{lineId:string;point:Point;angle:number;score:number}[]=[];
+ for(const c of candidates){
+  if(selected.some(s=>s.lineId===c.line.id&&d(s.point,c.point)<.14))continue;
+  if(selected.some(s=>d(s.point,c.point)<.10))continue;
+  selected.push({lineId:c.line.id,point:c.point,angle:c.angle,score:c.score});
+  if(selected.length>=6)break;
+ }
+ return selected.map((c,i)=>{
+  const source=lines.find(l=>l.id===c.lineId)!;
+  const len=polyLength(source.points);
+  return{
+   id:crypto.randomUUID(),
+   x:c.point.x,y:c.point.y,
+   length:clamp(25+len*35,25,70),
+   angle:c.angle,
+   score:Math.round(c.score),
+   kind:i===0?'recommended':c.score>=55?'optional':'avoid'
+  };
+ });
 }
