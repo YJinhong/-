@@ -3,8 +3,30 @@ function endpointPoint(l:Line,e:Endpoint){return e==='start'?l.points[0]:l.point
 function angle(a:Point,b:Point){return Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI}
 function reverse(l:Line):Line{return{...l,points:[...l.points].reverse()}}
 function orient(l:Line,e:Endpoint){return e==='end'?l:reverse(l)}
-export function findConnectionCandidates(lines:Line[],maxDistance=.06):ConnectionCandidate[]{const out:ConnectionCandidate[]=[];for(let i=0;i<lines.length;i++)for(let j=i+1;j<lines.length;j++){let best:ConnectionCandidate|undefined;for(const aEnd of ['start','end'] as Endpoint[])for(const bEnd of ['start','end'] as Endpoint[]){const a=endpointPoint(lines[i],aEnd),b=endpointPoint(lines[j],bEnd),d=dist(a,b);if(d>maxDistance)continue;const candidate={id:crypto.randomUUID(),a:lines[i].id,b:lines[j].id,aEnd,bEnd,distance:d,angle:Math.abs(angle(a,b)),reason:d<maxDistance*.45?'very close endpoints':'close endpoints',status:'pending' as const};if(!best||d<best.distance)best=candidate}if(best)out.push(best)}return out.sort((a,b)=>a.distance-b.distance)}
-
+export function findConnectionCandidates(lines:Line[],maxDistance=.06):ConnectionCandidate[]{
+ const out:ConnectionCandidate[]=[];
+ for(let i=0;i<lines.length;i++)for(let j=i+1;j<lines.length;j++){
+  const candidates:{aEnd:Endpoint;bEnd:Endpoint;distance:number}[]=[];
+  for(const aEnd of ['start','end'] as Endpoint[])for(const bEnd of ['start','end'] as Endpoint[]){
+   const a=endpointPoint(lines[i],aEnd),b=endpointPoint(lines[j],bEnd),distance=dist(a,b);
+   if(distance<=maxDistance)candidates.push({aEnd,bEnd,distance});
+  }
+  candidates.sort((a,b)=>a.distance-b.distance);
+  const usedA=new Set<Endpoint>(),usedB=new Set<Endpoint>();
+  for(const candidate of candidates){
+   if(usedA.has(candidate.aEnd)||usedB.has(candidate.bEnd))continue;
+   usedA.add(candidate.aEnd);usedB.add(candidate.bEnd);
+   const reason=candidate.distance<maxDistance*.45?'very close endpoints':'close endpoints';
+   out.push({
+    id:crypto.randomUUID(),a:lines[i].id,b:lines[j].id,
+    aEnd:candidate.aEnd,bEnd:candidate.bEnd,distance:candidate.distance,
+    angle:Math.abs(angle(endpointPoint(lines[i],candidate.aEnd),endpointPoint(lines[j],candidate.bEnd))),
+    reason,status:'pending'
+   });
+  }
+ }
+ return out.sort((a,b)=>a.distance-b.distance);
+}
 type SideRef={lineId:string;end:Endpoint};
 type Link={to:SideRef;distance:number};
 
