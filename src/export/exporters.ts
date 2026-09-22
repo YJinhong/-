@@ -1,4 +1,4 @@
-import{PDFDocument,StandardFonts,rgb}from'pdf-lib';import JSZip from'jszip';import{saveAs}from'file-saver';import type{Project,Line}from'../types';
+import{PDFDocument,StandardFonts,rgb}from'pdf-lib';import JSZip from'jszip';import{saveAs}from'file-saver';import type{Project,Line,ProductionPlan,ProductionStep}from'../types';
 import{supportStickEndpoint}from'../geometry/units';
 export function svg(project:Project){const w=project.widthMm,h=project.heightMm;const body=project.lines.map(l=>'<polyline fill="none" stroke="black" stroke-linecap="round" stroke-linejoin="round" stroke-width="'+l.width+'" points="'+l.points.map(p=>((p.x+.5)*w)+','+((p.y+.5)*h)).join(' ')+'"/>').join('');const sticks=project.sticks.map(s=>{const a=s.angle*Math.PI/180;const endpoint=supportStickEndpoint(s,w,h),x2=endpoint.x,y2=endpoint.y;return '<line x1="'+((s.x+.5)*w)+'" y1="'+((s.y+.5)*h)+'" x2="'+((x2+.5)*w)+'" y2="'+((y2+.5)*h)+'" stroke="#36c275" stroke-width="1.2" stroke-dasharray="3 2"/>'}).join('');return '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="'+w+'mm" height="'+h+'mm" viewBox="0 0 '+w+' '+h+'"><rect width="100%" height="100%" fill="white"/>'+body+sticks+'</svg>'}
 export function downloadSvg(p:Project){saveAs(new Blob([svg(p)],{type:'image/svg+xml'}),p.name+'.svg')}
@@ -16,9 +16,20 @@ function pdfLabel(page:any,x:number,y:number,label:string,font:any){
  page.drawCircle({x,y,size:7,borderWidth:.6,borderColor:rgb(.15,.55,.35),color:rgb(.94,.98,.95)});
  page.drawText(label,{x:x-font.widthOfTextAtSize(label,6)/2,y:y-2,size:6,font,color:rgb(.08,.35,.22)});
 }
+function fallbackProductionPlan(p:Project):ProductionPlan{
+ const ordered=[...p.lines];
+ const steps:ProductionStep[]=ordered.map((l,i)=>({
+  id:'export-'+l.id,index:i+1,lineId:l.id,
+  action:l.closed?'CLOSE':i===0?'DRAW':'LIFT',
+  lengthMm:Math.round((l.points.slice(1).reduce((n,q,j)=>n+Math.hypot((q.x-l.points[j].x)*p.widthMm,(q.y-l.points[j].y)*p.heightMm),0))*10)/10,
+  start:l.points[0],end:l.points[l.points.length-1],penLiftBefore:i>0,note:i===0?'Start from this endpoint and maintain a steady syrup flow.':'Lift cleanly, reposition to the next start point, then continue.'
+ }));
+ return {id:'export-plan',createdAt:Date.now(),estimatedPenLifts:Math.max(0,steps.length-1),totalLengthMm:steps.reduce((n,s)=>n+s.lengthMm,0),steps,summary:[]};
+}
+function effectiveProductionPlan(p:Project){return p.productionPlan??fallbackProductionPlan(p)}
 export async function planPdfBytes(p:Project){
  const doc=await PDFDocument.create();
- const font=await doc.embedFont(StandardFonts.Helvetica);
+ const font=await doc.embedFont(StandardFonts.Helvetica);\n const plan=effectiveProductionPlan(p);
  const pageW=595,pageH=842,margin=36;
  const page=doc.addPage([pageW,pageH]);
  page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:margin,y:pageH-margin,size:20,font,color:rgb(.08,.08,.1)});
@@ -55,21 +66,21 @@ export async function planPdfBytes(p:Project){
  y-=8;page.drawText('SUPPORT STICKS',{x:margin,y,size:10,font});y-=15;
  for(const st of p.sticks.slice(0,8)){page.drawText('S'+(p.sticks.indexOf(st)+1)+' · '+st.kind+' · '+st.length.toFixed(1)+' mm · '+st.angle.toFixed(1)+'° · score '+Math.round(st.score),{x:margin,y,size:8,font});y-=12}
  y-=4;page.drawText('DRAWING ORDER',{x:margin,y,size:10,font});y-=15;
- p.lines.slice(0,12).forEach((l,i)=>{page.drawText((i+1)+'. '+(l.closed?'closed path':'open path')+' · '+l.points.length+' points · '+l.width.toFixed(3)+' width',{x:margin,y,size:8,font});y-=12});
+ plan.steps.slice(0,12).forEach((s,i)=>{const l=p.lines.find(v=>v.id===s.lineId);page.drawText((i+1)+'. '+s.action+' · '+s.lengthMm.toFixed(1)+' mm'+(l?' · '+l.points.length+' points · '+l.width.toFixed(3)+' width':' · manual step'),{x:margin,y,size:8,font});y-=12});
  y-=4;page.drawText('WARNINGS',{x:margin,y,size:10,font});y-=15;
  for(const w of p.warnings.slice(0,5)){page.drawText((w.severity.toUpperCase()+': '+w.message).slice(0,90),{x:margin,y,size:8,font});y-=12}
  page.drawText('Structural analysis is geometric/heuristic; it is not a material mechanics simulation.',{x:margin,y:24,size:7,font,color:rgb(.45,.45,.48)});
 
  // Page 2: detailed step-by-step production instructions.
  let detail=doc.addPage([pageW,pageH]);
- const stepPages=Math.max(1,Math.ceil(p.lines.length/18));
+ const stepPages=Math.max(1,Math.ceil(plan.steps.length/18));
  let stepPage=0;
  const newStepPage=()=>{
   detail=doc.addPage([pageW,pageH]);
   stepPage++;
   detail.drawText('SUGAR DRAW · DETAILED PRODUCTION STEPS',{x:margin,y:pageH-margin,size:18,font,color:rgb(.08,.08,.1)});
   detail.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-22,size:10,font,color:rgb(.3,.3,.34)});
-  detail.drawText('Steps '+(stepPage*18-17)+'–'+Math.min(stepPage*18,p.lines.length)+' of '+p.lines.length,{x:pageW-margin-150,y:pageH-margin-22,size:8,font,color:rgb(.4,.4,.44)});
+  detail.drawText('Steps '+(stepPage*18-17)+'–'+Math.min(stepPage*18,plan.steps.length)+' of '+p.lines.length,{x:pageW-margin-150,y:pageH-margin-22,size:8,font,color:rgb(.4,.4,.44)});
   detail.drawText('Path sequence, segment length, nodes and pen-lift guidance',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
   detail.drawText('STEP',{x:margin,y:pageH-margin-70,size:8,font});
   detail.drawText('LINE / LENGTH',{x:90,y:pageH-margin-70,size:8,font});
@@ -85,7 +96,7 @@ export async function planPdfBytes(p:Project){
   detail=doc.addPage([pageW,pageH]);
   detail.drawText('SUGAR DRAW · DETAILED PRODUCTION STEPS',{x:margin,y:pageH-margin,size:18,font,color:rgb(.08,.08,.1)});
   detail.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-22,size:10,font,color:rgb(.3,.3,.34)});
-  detail.drawText('Steps 1–'+Math.min(18,p.lines.length)+' of '+p.lines.length,{x:pageW-margin-150,y:pageH-margin-22,size:8,font,color:rgb(.4,.4,.44)});
+  detail.drawText('Steps 1–'+Math.min(18,plan.steps.length)+' of '+p.lines.length,{x:pageW-margin-150,y:pageH-margin-22,size:8,font,color:rgb(.4,.4,.44)});
   detail.drawText('Path sequence, segment length, nodes and pen-lift guidance',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
   detail.drawText('STEP',{x:margin,y:pageH-margin-70,size:8,font});
   detail.drawText('LINE / LENGTH',{x:90,y:pageH-margin-70,size:8,font});
@@ -96,27 +107,27 @@ export async function planPdfBytes(p:Project){
  };
  firstStepPage();
  let dy=pageH-margin-88;
- p.lines.forEach((l,idx)=>{
+ plan.steps.forEach((step,idx)=>{
   if(idx>0&&idx%18===0){newStepPage();dy=pageH-margin-88}
-  const start=l.points[0],end=l.points[l.points.length-1],len=segLength(l),sc=endpointConnections(l,'start'),ec=endpointConnections(l,'end');
-  const action=l.closed?'CLOSE':(ec>0?'CONTINUE':'LIFT');
+  const l=p.lines.find(v=>v.id===step.lineId);
+  const start=step.start,end=step.end;
   const bx=margin,by=dy-8,bw=43,bh=32;
   detail.drawRectangle({x:bx,y:by,width:bw,height:bh,borderWidth:.5,borderColor:rgb(.78,.79,.82)});
-  if(l.points.length>1){
+  if(l&&l.points.length>1){
    const xs=l.points.map(q=>q.x),ys=l.points.map(q=>q.y),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
    const ss=Math.min(35/Math.max(.001,maxX-minX),24/Math.max(.001,maxY-minY));
    const tx=(q:{x:number;y:number})=>bx+4+(q.x-minX)*ss+(35-(maxX-minX)*ss)/2;
    const ty=(q:{x:number;y:number})=>by+4+(maxY-q.y)*ss+(24-(maxY-minY)*ss)/2;
    for(let j=1;j<l.points.length;j++){const a=l.points[j-1],b=l.points[j];detail.drawLine({start:{x:tx(a),y:ty(a)},end:{x:tx(b),y:ty(b)},thickness:1,color:rgb(.08,.08,.09)})}
    detail.drawCircle({x:tx(l.points[0]),y:ty(l.points[0]),size:2.5,color:rgb(.1,.55,.35)});
-   detail.drawCircle({x:tx(end),y:ty(end),size:2.5,color:rgb(.75,.25,.2)});
+   detail.drawCircle({x:tx(l.points[l.points.length-1]),y:ty(l.points[l.points.length-1]),size:2.5,color:rgb(.75,.25,.2)});
   }
-  detail.drawText(String(idx+1),{x:margin+48,y:dy+8,size:8,font});
-  detail.drawText(('L'+(idx+1)+' · '+len.toFixed(1)+' mm').slice(0,24),{x:90,y:dy+8,size:8,font});
-  detail.drawText((start?('('+start.x.toFixed(3)+', '+start.y.toFixed(3)+') · '+sc+' link'):'—').slice(0,31),{x:220,y:dy+8,size:7,font});
-  detail.drawText((end?('('+end.x.toFixed(3)+', '+end.y.toFixed(3)+') · '+ec+' link'):'—').slice(0,31),{x:325,y:dy+8,size:7,font});
-  detail.drawText(action,{x:430,y:dy+8,size:7,font});
-  detail.drawText('green=start · red=end',{x:90,y:dy-3,size:6,font,color:rgb(.45,.45,.48)});
+  detail.drawText(String(step.index),{x:margin+48,y:dy+8,size:8,font});
+  detail.drawText((step.action+' · '+step.lengthMm.toFixed(1)+' mm').slice(0,24),{x:90,y:dy+8,size:8,font});
+  detail.drawText(('('+start.x.toFixed(3)+', '+start.y.toFixed(3)+')').slice(0,31),{x:220,y:dy+8,size:7,font});
+  detail.drawText(('('+end.x.toFixed(3)+', '+end.y.toFixed(3)+')').slice(0,31),{x:325,y:dy+8,size:7,font});
+  detail.drawText(step.penLiftBefore?'LIFT':'START',{x:430,y:dy+8,size:7,font});
+  detail.drawText((step.note||'').slice(0,74),{x:90,y:dy-3,size:6,font,color:rgb(.45,.45,.48)});
   dy-=42;
  });
  // Page 3: materials and production parameters.
@@ -129,7 +140,7 @@ export async function planPdfBytes(p:Project){
  const connectionAccepted=p.connections.filter(x=>x.status==='accepted').length;
  const connectionPending=p.connections.filter(x=>x.status==='pending').length;
  const connectionRejected=p.connections.filter(x=>x.status==='rejected').length;
- const liftCount=p.lines.filter(l=>!l.closed&&endpointConnections(l,'end')===0).length;
+ const liftCount=plan.estimatedPenLifts;
  const recommendedSticks=p.sticks.filter(x=>x.kind==='recommended').length;
  const minWidth=Math.min(...p.lines.map(x=>x.width).filter(x=>Number.isFinite(x)),p.settings.minWidthMm);
  const maxWidth=Math.max(...p.lines.map(x=>x.width).filter(x=>Number.isFinite(x)),p.settings.minWidthMm);
