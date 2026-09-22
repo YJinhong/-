@@ -61,67 +61,70 @@ export async function planPdf(p:Project){
  page.drawText('Structural analysis is geometric/heuristic; it is not a material mechanics simulation.',{x:margin,y:24,size:7,font,color:rgb(.45,.45,.48)});
 
  // Page 2: detailed step-by-step production instructions.
- const detail=doc.addPage([pageW,pageH]);
- detail.drawText('SUGAR DRAW · DETAILED PRODUCTION STEPS',{x:margin,y:pageH-margin,size:18,font,color:rgb(.08,.08,.1)});
- detail.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-22,size:10,font,color:rgb(.3,.3,.34)});
- let dy=pageH-margin-48;
- detail.drawText('Path sequence, segment length, nodes and pen-lift guidance',{x:margin,y:dy,size:9,font,color:rgb(.35,.35,.4)});
- dy-=22;
- const segLength=(l:Line)=>{
-  let n=0;for(let i=1;i<l.points.length;i++)n+=Math.hypot((l.points[i].x-l.points[i-1].x)*p.widthMm,(l.points[i].y-l.points[i-1].y)*p.heightMm);return n;
+ let detail=doc.addPage([pageW,pageH]);
+ const stepPages=Math.max(1,Math.ceil(p.lines.length/18));
+ let stepPage=0;
+ const newStepPage=()=>{
+  detail=doc.addPage([pageW,pageH]);
+  stepPage++;
+  detail.drawText('SUGAR DRAW · DETAILED PRODUCTION STEPS',{x:margin,y:pageH-margin,size:18,font,color:rgb(.08,.08,.1)});
+  detail.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-22,size:10,font,color:rgb(.3,.3,.34)});
+  detail.drawText('Steps '+(stepPage*18-17)+'–'+Math.min(stepPage*18,p.lines.length)+' of '+p.lines.length,{x:pageW-margin-150,y:pageH-margin-22,size:8,font,color:rgb(.4,.4,.44)});
+  detail.drawText('Path sequence, segment length, nodes and pen-lift guidance',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
+  detail.drawText('STEP',{x:margin,y:pageH-margin-70,size:8,font});
+  detail.drawText('LINE / LENGTH',{x:90,y:pageH-margin-70,size:8,font});
+  detail.drawText('START NODE',{x:220,y:pageH-margin-70,size:8,font});
+  detail.drawText('END NODE',{x:325,y:pageH-margin-70,size:8,font});
+  detail.drawText('ACTION',{x:430,y:pageH-margin-70,size:8,font});
+  detail.drawText('Page '+(stepPage+1)+' · Steps '+(stepPage*18-17)+'–'+Math.min(stepPage*18,p.lines.length),{x:margin,y:24,size:7,font,color:rgb(.45,.45,.48)});
  };
- const endpointConnections=(l:Line,at:'start'|'end')=>{
-  const pt=at==='start'?l.points[0]:l.points[l.points.length-1]; if(!pt)return 0;
-  return p.connections.filter(c=>(c.a===l.id&&c.aEnd===at)||(c.b===l.id&&c.bEnd===at)).length;
+ const segLength=(l:Line)=>{let n=0;for(let i=1;i<l.points.length;i++)n+=Math.hypot((l.points[i].x-l.points[i-1].x)*p.widthMm,(l.points[i].y-l.points[i-1].y)*p.heightMm);return n};
+ const endpointConnections=(l:Line,at:'start'|'end')=>p.connections.filter(c=>(c.a===l.id&&c.aEnd===at)||(c.b===l.id&&c.bEnd===at)).length;
+ const firstStepPage=()=>{
+  stepPage=0;
+  detail=doc.addPage([pageW,pageH]);
+  detail.drawText('SUGAR DRAW · DETAILED PRODUCTION STEPS',{x:margin,y:pageH-margin,size:18,font,color:rgb(.08,.08,.1)});
+  detail.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-22,size:10,font,color:rgb(.3,.3,.34)});
+  detail.drawText('Steps 1–'+Math.min(18,p.lines.length)+' of '+p.lines.length,{x:pageW-margin-150,y:pageH-margin-22,size:8,font,color:rgb(.4,.4,.44)});
+  detail.drawText('Path sequence, segment length, nodes and pen-lift guidance',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
+  detail.drawText('STEP',{x:margin,y:pageH-margin-70,size:8,font});
+  detail.drawText('LINE / LENGTH',{x:90,y:pageH-margin-70,size:8,font});
+  detail.drawText('START NODE',{x:220,y:pageH-margin-70,size:8,font});
+  detail.drawText('END NODE',{x:325,y:pageH-margin-70,size:8,font});
+  detail.drawText('ACTION',{x:430,y:pageH-margin-70,size:8,font});
+  detail.drawText('Page 2 · Steps 1–'+Math.min(18,p.lines.length),{x:margin,y:24,size:7,font,color:rgb(.45,.45,.48)});
  };
- detail.drawText('STEP', {x:margin,y:dy,size:8,font});
- detail.drawText('LINE / LENGTH', {x:90,y:dy,size:8,font});
- detail.drawText('START NODE', {x:220,y:dy,size:8,font});
- detail.drawText('END NODE', {x:325,y:dy,size:8,font});
- detail.drawText('ACTION', {x:430,y:dy,size:8,font});
- dy-=12;
- p.lines.slice(0,18).forEach((l,idx)=>{
-  if(dy<82)return;
-  const start=l.points[0],end=l.points[l.points.length-1],len=segLength(l);
-  const sc=endpointConnections(l,'start'),ec=endpointConnections(l,'end');
+ firstStepPage();
+ let dy=pageH-margin-88;
+ p.lines.forEach((l,idx)=>{
+  if(idx>0&&idx%18===0){newStepPage();dy=pageH-margin-88}
+  const start=l.points[0],end=l.points[l.points.length-1],len=segLength(l),sc=endpointConnections(l,'start'),ec=endpointConnections(l,'end');
   const action=l.closed?'CLOSE':(ec>0?'CONTINUE':'LIFT');
   const bx=margin,by=dy-8,bw=43,bh=32;
   detail.drawRectangle({x:bx,y:by,width:bw,height:bh,borderWidth:.5,borderColor:rgb(.78,.79,.82)});
   if(l.points.length>1){
-   const xs=l.points.map(q=>q.x),ys=l.points.map(q=>q.y);
-   const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
-   const sx=35/Math.max(.001,maxX-minX),sy=24/Math.max(.001,maxY-minY),ss=Math.min(sx,sy);
+   const xs=l.points.map(q=>q.x),ys=l.points.map(q=>q.y),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+   const ss=Math.min(35/Math.max(.001,maxX-minX),24/Math.max(.001,maxY-minY));
    const tx=(q:{x:number;y:number})=>bx+4+(q.x-minX)*ss+(35-(maxX-minX)*ss)/2;
    const ty=(q:{x:number;y:number})=>by+4+(maxY-q.y)*ss+(24-(maxY-minY)*ss)/2;
-   for(let j=1;j<l.points.length;j++){
-    const a=l.points[j-1],b=l.points[j];
-    detail.drawLine({start:{x:tx(a),y:ty(a)},end:{x:tx(b),y:ty(b)},thickness:1,color:rgb(.08,.08,.09)});
-   }
+   for(let j=1;j<l.points.length;j++){const a=l.points[j-1],b=l.points[j];detail.drawLine({start:{x:tx(a),y:ty(a)},end:{x:tx(b),y:ty(b)},thickness:1,color:rgb(.08,.08,.09)})}
    detail.drawCircle({x:tx(l.points[0]),y:ty(l.points[0]),size:2.5,color:rgb(.1,.55,.35)});
    detail.drawCircle({x:tx(end),y:ty(end),size:2.5,color:rgb(.75,.25,.2)});
   }
   detail.drawText(String(idx+1),{x:margin+48,y:dy+8,size:8,font});
   detail.drawText(('L'+(idx+1)+' · '+len.toFixed(1)+' mm').slice(0,24),{x:90,y:dy+8,size:8,font});
-  detail.drawText((start?('('+start.x.toFixed(3)+', '+start.y.toFixed(3)+') · '+sc+' link'): '—').slice(0,31),{x:220,y:dy+8,size:7,font});
-  detail.drawText((end?('('+end.x.toFixed(3)+', '+end.y.toFixed(3)+') · '+ec+' link'): '—').slice(0,31),{x:325,y:dy+8,size:7,font});
+  detail.drawText((start?('('+start.x.toFixed(3)+', '+start.y.toFixed(3)+') · '+sc+' link'):'—').slice(0,31),{x:220,y:dy+8,size:7,font});
+  detail.drawText((end?('('+end.x.toFixed(3)+', '+end.y.toFixed(3)+') · '+ec+' link'):'—').slice(0,31),{x:325,y:dy+8,size:7,font});
   detail.drawText(action,{x:430,y:dy+8,size:7,font});
   detail.drawText('green=start · red=end',{x:90,y:dy-3,size:6,font,color:rgb(.45,.45,.48)});
   dy-=42;
  });
- dy-=6;
- detail.drawText('CONNECTION / NODE MAP',{x:margin,y:dy,size:10,font});dy-=15;
- p.connections.slice(0,24).forEach((c,idx)=>{
-  if(dy<48)return;
-  const status=c.status.toUpperCase();
-  detail.drawText('N'+(idx+1)+' · '+c.a+' ('+c.aEnd+') ↔ '+c.b+' ('+c.bEnd+') · '+c.distance.toFixed(2)+' · '+status,{x:margin,y:dy,size:7,font});
-  dy-=12;
- });
- if(dy>=60){
-  dy-=4;detail.drawText('PEN CONTROL',{x:margin,y:dy,size:10,font});dy-=15;
-  detail.drawText('START: begin at the numbered start node. CONTINUE: keep contact through accepted connections. LIFT: lift the tool after an open endpoint with no accepted connection.',{x:margin,y:dy,size:7,font});
-  dy-=13;
-  detail.drawText('Connection suggestions are geometric; manually verify every joint before production.',{x:margin,y:dy,size:7,font,color:rgb(.45,.45,.48)});
- }
+ const lastPage=detail;
+ let ey=dy-8;
+ if(ey<55)ey=55;
+ detail.drawText('PEN CONTROL',{x:margin,y:ey,size:10,font});ey-=15;
+ detail.drawText('START: begin at the numbered start node. CONTINUE: keep contact through accepted connections. LIFT: lift the tool after an open endpoint with no accepted connection.',{x:margin,y:ey,size:7,font});ey-=13;
+ detail.drawText('Connection suggestions are geometric; manually verify every joint before production.',{x:margin,y:ey,size:7,font,color:rgb(.45,.45,.48)});
  saveAs(new Blob([await doc.save()],{type:'application/pdf'}),p.name+'-plan.pdf')
 }
 export function projectJson(p:Project){return JSON.stringify({version:1,exportedAt:new Date().toISOString(),project:p},null,2)}
