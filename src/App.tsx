@@ -260,21 +260,21 @@ function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connection
  }
  function rebuildProductionPlan(){setProductionPlan(buildProductionPlan(p));setProductionSelected(0)}
  function moveProductionStep(from:number,to:number){
-  setProductionPlan(q=>{
-   if(!q||from<0||from>=q.steps.length||to<0||to>=q.steps.length)return q;
-   const steps=[...q.steps],moved=steps.splice(from,1)[0];
-   if(!moved)return q;
-   steps.splice(to,0,moved);
-   const next=steps.map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}));
-   return {...q,steps:next,estimatedPenLifts:Math.max(0,next.length-1),totalLengthMm:Math.round(next.reduce((n,s)=>n+s.lengthMm,0)*10)/10};
-  });
+  if(!productionPlan||from<0||from>=productionPlan.steps.length||to<0||to>=productionPlan.steps.length||from===to)return;
+  const steps=[...productionPlan.steps],moved=steps.splice(from,1)[0];
+  if(!moved)return;
+  steps.splice(to,0,moved);
+  const next=steps.map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}));
+  const nextPlan={...productionPlan,steps:next,estimatedPenLifts:Math.max(0,next.length-1),totalLengthMm:Math.round(next.reduce((n,s)=>n+s.lengthMm,0)*10)/10};
+  setP(q=>({...q,history:[...q.history,snapshot('Move production step',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}));
+  setProductionPlan(nextPlan);
  }
  function deleteProductionStep(index:number){
-  setProductionPlan(q=>{
-   if(!q||index<0||index>=q.steps.length)return q;
-   const steps=q.steps.filter((_,i)=>i!==index).map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}));
-   return {...q,steps,estimatedPenLifts:Math.max(0,steps.length-1),totalLengthMm:Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10,summary:[steps.length+' drawing segments',Math.max(0,steps.length-1)+' estimated pen lifts',Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10+' mm total path',q.summary[3]??'',q.summary[4]??'']};
-  });
+  if(!productionPlan||index<0||index>=productionPlan.steps.length)return;
+  const steps=productionPlan.steps.filter((_,i)=>i!==index).map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}));
+  const nextPlan={...productionPlan,steps,estimatedPenLifts:Math.max(0,steps.length-1),totalLengthMm:Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10,summary:[steps.length+' drawing segments',Math.max(0,steps.length-1)+' estimated pen lifts',Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10+' mm total path',productionPlan.summary[3]??'',productionPlan.summary[4]??'']};
+  setP(q=>({...q,history:[...q.history,snapshot('Delete production step',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}));
+  setProductionPlan(nextPlan);
  }
  function runOptimize(){const r=sugarArtify(p.lines,p.settings);const path=minimumPenLiftPath(r.lines);const lines=path.order;const connections=findConnectionCandidates(lines,p.settings.connectDistance);const graph=rebuildGraph(lines);setP(q=>({...q,lines,connections,warnings:[...analyze(lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))],sticks:recommendSticks(lines),history:[...q.history,snapshot('Sugar Artify + graph rebuild',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}))}
  function acceptConnection(id:string){setP(q=>{const target=q.connections.find(c=>c.id===id);if(!target||target.status==='accepted')return q;const connections=q.connections.map(c=>c.id===id?{...c,status:'accepted' as const}:c);return{...q,connections,history:[...q.history,snapshot('Accept connection',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}})}
