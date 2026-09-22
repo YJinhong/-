@@ -70,16 +70,32 @@ function classify(lines:Line[]):Map<string,Importance>{
   return result;
 }
 
-function keepByDetail(kind:Importance,settings:OptimizationSettings,score:number){
-  if(settings.detail==='low')return kind==='primary';
-  if(settings.detail==='balanced')return kind!=='detail'||score>=.34;
-  return kind!=='detail'||score>=.17;
+function pointInBox(p:{x:number;y:number},b:{x:number;y:number;w:number;h:number}){return p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h}
+function contourHierarchy(lines:Line[]){
+ const global=bounds(lines),scale=Math.max(global.w,global.h,.1);
+ return new Map(lines.map(l=>{
+  const b=bounds([l]),len=pathLength(l.points),area=l.closed?polygonArea(l.points):0;
+  const touchesBoundary=b.x<=global.x+scale*.015||b.y<=global.y+scale*.015||b.x+b.w>=global.x+global.w-scale*.015||b.y+b.h>=global.y+global.h-scale*.015;
+  const envelope=(b.w>=global.w*.62||b.h>=global.h*.62)&&len>=scale*.7;
+  const enclosed=lines.some(o=>o!==l&&o.closed&&pointInBox(lineCenter(o),b));
+  const hierarchy=envelope||touchesBoundary?'outline':enclosed?'feature':area>scale*scale*.004?'region':'detail';
+  return[l.id,hierarchy] as const;
+ }))
+}
+
+function keepByDetail(kind:Importance,settings:OptimizationSettings,score:number,hierarchy:'outline'|'feature'|'region'|'detail'){
+ if(hierarchy==='outline')return true;
+ if(hierarchy==='feature')return settings.detail!=='low'||score>=.18;
+ if(settings.detail==='low')return kind==='primary';
+ if(settings.detail==='balanced')return kind!=='detail'||score>=.34;
+ return kind!=='detail'||score>=.17;
 }
 
 export function sugarArtify(lines:Line[],settings:OptimizationSettings){
   const base=optimize(lines,settings).lines;
   if(!base.length)return{lines:[],removed:lines.length};
   const kinds=classify(base);
+  const hierarchy=contourHierarchy(base);
   const scores=new Map<string,number>();
   const total=base.reduce((s,l)=>s+pathLength(l.points),0)||1;
   const maxLength=Math.max(...base.map(l=>pathLength(l.points)),.001);
@@ -88,7 +104,7 @@ export function sugarArtify(lines:Line[],settings:OptimizationSettings){
     const score=Math.min(1,.55*(len/maxLength)+.45*(len/total));
     scores.set(l.id,score);
   }
-  const kept=base.filter(l=>keepByDetail(kinds.get(l.id)??'detail',settings,scores.get(l.id)??0));
+  const kept=base.filter(l=>keepByDetail(kinds.get(l.id)??'detail',settings,scores.get(l.id)??0,hierarchy.get(l.id)??'detail'));
   const finalLines=kept.map(l=>{
     const pts=simplify(l.points,settings.simplifyTolerance);
     return{...l,points:pts,width:Math.max(settings.minWidthMm,l.width)};
