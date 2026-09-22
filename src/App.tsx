@@ -11,7 +11,7 @@ import{findConnectionCandidates,applyConnections}from'./algorithms/connections';
 import{saveProject,listProjects,deleteProject}from'./storage/projectStore';
 import{projectScales,polylineLengthMm,supportStickEndpoint}from'./geometry/units';
 import{downloadSvg,downloadPng,planPdf,zipProjects,projectJson}from'./export/exporters';
-import{BatchProcessor}from'./batch/batchProcessor';
+import{BatchProcessor}from'./batch/batchProcessor';import{createPreviewData}from'./image/preview';
 import{solveConstraints,diagnoseConstraints}from'./cad/constraintSolver';
 
 const defaults={detail:'balanced' as const,minWidthMm:3.5,connectDistance:.06,simplifyTolerance:.015};
@@ -197,7 +197,7 @@ export default function App(){
  },[p,zoom,pan,dark,grid,playing,playIndex,viewMode,overlayOpacity,measureStart,measureEnd,cursorPoint,selectedLines,selectionBox,diagnosticFocus,diagnosticHover,viewportTick]);
  function deleteSelected(){if(!selectedLines.length)return;setP(q=>{const nextLines=q.lines.filter(l=>!selectedLines.includes(l.id));const constraints=(q.constraints??[]).filter(c=>!selectedLines.includes(c.lineId)&&!selectedLines.includes(c.referenceLineId));const nextSticks=q.sticks.filter(s=>nextLines.some(l=>l.points.some(pt=>Math.hypot(pt.x-s.x,pt.y-s.y)<.06)));return{...q,lines:nextLines,productionPlan:undefined,connections:q.connections.filter(c=>!selectedLines.includes(c.a)&&!selectedLines.includes(c.b)),sticks:nextSticks,constraints,history:[...q.history,snapshot('Delete selected',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}});setSelectedLines([]);setSelectedLine(null);setRelationLine(null)}
  function snapshot(label:string,lines=p.lines,sticks=p.sticks,production=p.productionPlan,constraints=p.constraints,connections=p.connections){return{id:crypto.randomUUID(),createdAt:Date.now(),label,lines:cloneLines(lines),sticks:sticks.map(s=>({...s})),connections:(connections??[]).map(c=>({...c})),constraints:(constraints??[]).map(c=>({...c})),productionPlan:production?JSON.parse(JSON.stringify(production)):undefined}}
- async function importFiles(fs:FileList|null){if(!fs)return;const session=++batchSession.current;const files=Array.from(fs);if(!files.length)return;batchFilesRef.current=files;setBatchFiles(files);setBatchOpen(true);setBatchPaused(false);const processor=new BatchProcessor();batchProcessor.current=processor;const meta=await Promise.all(files.map(f=>new Promise<{thumbnail:string;width?:number;height?:number}>(resolve=>{const fr=new FileReader();fr.onload=()=>{const src=String(fr.result);const img=new Image();img.onload=()=>resolve({thumbnail:src,width:img.naturalWidth,height:img.naturalHeight});img.onerror=()=>resolve({thumbnail:src});img.src=src};fr.readAsDataURL(f)})));setBatchJobs(files.map((f,i)=>({id:crypto.randomUUID(),fileName:f.name,size:f.size,status:'queued',progress:0,sourceIndex:i,...meta[i]})));const results=await processor.runWithResults(files,p.settings.detail,j=>{if(session===batchSession.current)setBatchJobs(j.map((job,i)=>({...job,...meta[job.sourceIndex??i]})))});
+ async function importFiles(fs:FileList|null){if(!fs)return;const session=++batchSession.current;const files=Array.from(fs);if(!files.length)return;batchFilesRef.current=files;setBatchFiles(files);setBatchOpen(true);setBatchPaused(false);const processor=new BatchProcessor();batchProcessor.current=processor;const meta=await Promise.all(files.map(async f=>{try{const preview=await createPreviewData(f,1600);return{thumbnail:preview.data,width:preview.width,height:preview.height}}catch{ return{thumbnail:'' as string,width:undefined,height:undefined}}}));setBatchJobs(files.map((f,i)=>({id:crypto.randomUUID(),fileName:f.name,size:f.size,status:'queued',progress:0,sourceIndex:i,...meta[i]})));const results=await processor.runWithResults(files,p.settings.detail,j=>{if(session===batchSession.current)setBatchJobs(j.map((job,i)=>({...job,...meta[job.sourceIndex??i]})))});
 const created:Project[]=[];
 if(session!==batchSession.current){processor.dispose();if(batchProcessor.current===processor)batchProcessor.current=null;return}
 for(let i=0;i<files.length;i++){
@@ -233,7 +233,9 @@ async function openBatchResult(job:BatchJob):Promise<Project|undefined>{
   if(!job.lines||job.sourceIndex===undefined)return undefined;
   const file=batchFilesRef.current[job.sourceIndex];
   let imageData=job.thumbnail;
-  if(file)imageData=await new Promise<string>(resolve=>{const fr=new FileReader();fr.onload=()=>resolve(String(fr.result));fr.readAsDataURL(file)});
+  if(file&&!imageData){
+   try{imageData=(await createPreviewData(file,1600)).data}catch{}
+  }
   const now=Date.now();
   const work=imageWorkSize(job.width,job.height);
   const project:Project={...blank(),id:crypto.randomUUID(),name:job.fileName.replace(/\.[^.]+$/,''),createdAt:now,updatedAt:now,originalName:job.fileName,imageData,widthMm:work.widthMm,heightMm:work.heightMm,lines:cloneLines(job.lines),connections:findConnectionCandidates(job.lines,p.settings.connectDistance),warnings:analyze(job.lines),sticks:recommendSticks(job.lines),settings:{...p.settings}};
