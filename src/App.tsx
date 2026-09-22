@@ -135,7 +135,7 @@ function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connection
   if(!selectedLine||!relationLine||selectedLine===relationLine)return;
   const a=p.lines.find(v=>v.id===selectedLine),b=p.lines.find(v=>v.id===relationLine);if(!a||!b)return;
   const pa=a.points[0],pb=b.points[0],value=type==='horizontalDistance'?Math.abs((pb.x-pa.x)*p.widthMm):Math.abs((pb.y-pa.y)*p.heightMm),now=Date.now();
-  setP(q=>({...q,constraints:[...(q.constraints??[]),{id:crypto.randomUUID(),lineId:b.id,type,value,createdAt:now}],history:[...q.history,snapshot('CAD '+type,q.lines,q.sticks)],updatedAt:now}))
+  setP(q=>({...q,constraints:[...(q.constraints??[]),{id:crypto.randomUUID(),lineId:b.id,type,value,referenceLineId:a.id,createdAt:now}],history:[...q.history,snapshot('CAD '+type,q.lines,q.sticks)],updatedAt:now}))
  }
  function addDistanceConstraint(type:'horizontalDistance'|'verticalDistance'){
   if(!selectedLine)return;const l=p.lines.find(v=>v.id===selectedLine);if(!l||l.points.length<2)return;
@@ -150,7 +150,7 @@ function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connection
   if(!selectedLine||!relationLine||selectedLine===relationLine)return;
   const source=p.lines.find(l=>l.id===selectedLine),target=p.lines.find(l=>l.id===relationLine);if(!source||!target)return;
   const next=applyRelation(type,source,target),now=Date.now();
-  setP(q=>({...q,lines:q.lines.map(l=>l.id===target.id?next:l),constraints:[...(q.constraints??[]),{id:crypto.randomUUID(),lineId:target.id,type,createdAt:now}],history:[...q.history,snapshot('CAD '+type,q.lines,q.sticks)],updatedAt:now}));
+  setP(q=>({...q,lines:q.lines.map(l=>l.id===target.id?next:l),constraints:[...(q.constraints??[]).filter(c=>!(c.lineId===target.id&&c.referenceLineId===source.id&&c.type===type)),{id:crypto.randomUUID(),lineId:target.id,type,referenceLineId:source.id,createdAt:now}],history:[...q.history,snapshot('CAD '+type,q.lines,q.sticks)],updatedAt:now}));
  }
  function lineGeometry(line:Line){const a=line.points[0],b=line.points.at(-1)!;const dx=(b.x-a.x)*p.widthMm,dy=(b.y-a.y)*p.heightMm;return{sx:a.x*p.widthMm,sy:a.y*p.heightMm,ex:b.x*p.widthMm,ey:b.y*p.heightMm,dx,dy,length:Math.hypot(dx,dy),angle:Math.atan2(dy,dx)*180/Math.PI}}
  function promptConstraint(type:CADConstraint['type']){if(!selectedLine)return;const labels:{[K in CADConstraint['type']]:string}={length:'Target length (mm)',horizontal:'Horizontal (no value)',vertical:'Vertical (no value)',angle:'Target angle (degrees)',x:'Start X coordinate (mm)',y:'Start Y coordinate (mm)'};const raw=type==='horizontal'||type==='vertical'?undefined:window.prompt(labels[type],String(type==='length'?50:type==='angle'?0:0));if(type==='horizontal'||type==='vertical'||raw!==null){const value=raw===undefined?undefined:Number(raw);if(value===undefined||Number.isFinite(value))applyConstraint(type,value)}}
