@@ -12,6 +12,10 @@ function pdfDimLine(page:any,x1:number,y1:number,x2:number,y2:number,label:strin
  const mx=(x1+x2)/2+nx*7,my=(y1+y2)/2+ny*7;
  page.drawText(label,{x:mx-font.widthOfTextAtSize(label,7)/2,y:my-2,size:7,font,color:rgb(.2,.2,.22)});
 }
+function pdfLabel(page:any,x:number,y:number,label:string,font:any){
+ page.drawCircle({x,y,size:7,borderWidth:.6,borderColor:rgb(.15,.55,.35),color:rgb(.94,.98,.95)});
+ page.drawText(label,{x:x-font.widthOfTextAtSize(label,6)/2,y:y-2,size:6,font,color:rgb(.08,.35,.22)});
+}
 export async function planPdf(p:Project){
  const doc=await PDFDocument.create();
  const font=await doc.embedFont(StandardFonts.Helvetica);
@@ -19,7 +23,7 @@ export async function planPdf(p:Project){
  const page=doc.addPage([pageW,pageH]);
  page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:margin,y:pageH-margin,size:20,font,color:rgb(.08,.08,.1)});
  page.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-24,size:11,font,color:rgb(.3,.3,.34)});
- page.drawText('WORKING DRAWING',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
+ page.drawText('WORKING DRAWING · PATH ORDER · SUPPORT DETAILS',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
  const frameX=margin,frameY=300,frameW=pageW-margin*2,frameH=360;
  page.drawRectangle({x:frameX,y:frameY,width:frameW,height:frameH,borderWidth:1,borderColor:rgb(.65,.66,.7)});
  const scale=Math.min(frameW/p.widthMm,frameH/p.heightMm);
@@ -27,8 +31,28 @@ export async function planPdf(p:Project){
  page.drawRectangle({x:ox,y:oy,width:p.widthMm*scale,height:p.heightMm*scale,borderWidth:.5,borderColor:rgb(.82,.83,.86)});
  const px=(q:{x:number;y:number})=>ox+(q.x+.5)*p.widthMm*scale;
  const py=(q:{x:number;y:number})=>oy+(q.y+.5)*p.heightMm*scale;
- for(const l of p.lines)for(let i=1;i<l.points.length;i++){const a=l.points[i-1],b=l.points[i];page.drawLine({start:{x:px(a),y:py(a)},end:{x:px(b),y:py(b)},thickness:Math.max(.6,Math.min(5,l.width*scale)),color:rgb(.05,.05,.06)})}
- for(const st of p.sticks){const en=supportStickEndpoint(st,p.widthMm,p.heightMm);page.drawLine({start:{x:px(st),y:py(st)},end:{x:px(en),y:py(en)},thickness:.8,color:rgb(.1,.65,.4),dashArray:[3,2]})}
+ let order=1;
+ for(const l of p.lines){
+  for(let i=1;i<l.points.length;i++){
+   const a=l.points[i-1],b=l.points[i];
+   page.drawLine({start:{x:px(a),y:py(a)},end:{x:px(b),y:py(b)},thickness:Math.max(.6,Math.min(5,l.width*scale)),color:rgb(.05,.05,.06)});
+  }
+  if(l.points.length){
+   const first=l.points[0];
+   pdfLabel(page,px(first),py(first),String(order++),font);
+  }
+ }
+ p.sticks.forEach((st,idx)=>{
+  const en=supportStickEndpoint(st,p.widthMm,p.heightMm);
+  const x1=px(st),y1=py(st),x2=px(en),y2=py(en);
+  page.drawLine({start:{x:x1,y:y1},end:{x:x2,y:y2},thickness:.8,color:rgb(.1,.65,.4),dashArray:[3,2]});
+  const mx=(x1+x2)/2,my=(y1+y2)/2;
+  pdfLabel(page,mx,my,'S'+(idx+1),font);
+  const angle=st.angle.toFixed(1)+'°';
+  const length=st.length.toFixed(1)+' mm';
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
+  page.drawText(length+' · '+angle,{x:mx+nx*9,y:my+ny*9-2,size:6,font,color:rgb(.08,.42,.27)});
+ });
  const dimGap=18;
  pdfDimLine(page,ox,oy-dimGap,ox+p.widthMm*scale,oy-dimGap,p.widthMm.toFixed(1)+' mm',font);
  pdfDimLine(page,ox-dimGap,oy,ox-dimGap,oy+p.heightMm*scale,p.heightMm.toFixed(1)+' mm',font);
@@ -40,9 +64,11 @@ export async function planPdf(p:Project){
  const rows=[['Canvas',p.widthMm+' × '+p.heightMm+' mm','Lines',String(p.lines.length)],['Min width',p.settings.minWidthMm+' mm','Sticks',String(p.sticks.length)],['Path length',pathLength.toFixed(1)+' mm','Warnings',String(p.warnings.length)]];
  for(const row of rows){row.forEach((t,i)=>page.drawText(t.slice(0,24),{x:cols[i],y,size:9,font,color:rgb(.12,.12,.14)}));y-=15}
  y-=8;page.drawText('SUPPORT STICKS',{x:margin,y,size:10,font});y-=15;
- for(const st of p.sticks.slice(0,8)){page.drawText((st.kind+' · '+Math.round(st.length)+' mm · '+Math.round(st.angle)+'° · score '+Math.round(st.score)).slice(0,80),{x:margin,y,size:8,font});y-=12}
+ for(const st of p.sticks.slice(0,8)){page.drawText('S'+(p.sticks.indexOf(st)+1)+' · '+st.kind+' · '+st.length.toFixed(1)+' mm · '+st.angle.toFixed(1)+'° · score '+Math.round(st.score),{x:margin,y,size:8,font});y-=12}
+ y-=4;page.drawText('DRAWING ORDER',{x:margin,y,size:10,font});y-=15;
+ p.lines.slice(0,12).forEach((l,i)=>{page.drawText((i+1)+'. '+(l.closed?'closed path':'open path')+' · '+l.points.length+' points · '+l.width.toFixed(3)+' width',{x:margin,y,size:8,font});y-=12});
  y-=4;page.drawText('WARNINGS',{x:margin,y,size:10,font});y-=15;
- for(const w of p.warnings.slice(0,8)){page.drawText((w.severity.toUpperCase()+': '+w.message).slice(0,90),{x:margin,y,size:8,font});y-=12}
+ for(const w of p.warnings.slice(0,5)){page.drawText((w.severity.toUpperCase()+': '+w.message).slice(0,90),{x:margin,y,size:8,font});y-=12}
  page.drawText('Structural analysis is geometric/heuristic; it is not a material mechanics simulation.',{x:margin,y:24,size:7,font,color:rgb(.45,.45,.48)});
  saveAs(new Blob([await doc.save()],{type:'application/pdf'}),p.name+'-plan.pdf')
 }
