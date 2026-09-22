@@ -96,7 +96,8 @@ async function smartContours(file:File,detail:'low'|'balanced'|'high',onProgress
  try{
   cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
   const candidates:any[]=[];
-  candidates.push(result.imageData);
+  const sugar=cv.matFromImageData(result.imageData);
+  candidates.push(sugar);
   cv.GaussianBlur(gray,blur,new cv.Size(detail==='high'?3:5,detail==='high'?3:5),0,0,cv.BORDER_DEFAULT);
   const edge=new cv.Mat();
   cv.Canny(blur,edge,detail==='low'?45:detail==='high'?35:40,detail==='low'?115:detail==='high'?105:110,3,false);
@@ -136,6 +137,7 @@ async function smartContours(file:File,detail:'low'|'balanced'|'high',onProgress
   onProgress?.(90);
   return best;
  }finally{src.delete();gray.delete();blur.delete()}
+
 }
 
 function gradientMask(g:Uint8Array,w:number,h:number,multiplier:number){
