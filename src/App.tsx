@@ -283,7 +283,7 @@ function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connection
  function undo(){
   const h=p.history.at(-1);if(!h)return;
   historyNavigation.current=true;
-  setRedoStack(r=>[...r,snapshot('Redo',p.lines,p.sticks)]);
+  setRedoStack(r=>[...r,snapshot('Redo',p.lines,p.sticks,p.productionPlan,p.constraints)]);
   setP(q=>({...q,lines:cloneLines(h.lines),sticks:h.sticks?.map(s=>({...s}))??q.sticks,constraints:h.constraints?.map(c=>({...c}))??q.constraints,connections:findConnectionCandidates(h.lines,q.settings.connectDistance),warnings:analyze(h.lines),productionPlan:h.productionPlan,history:q.history.slice(0,-1),updatedAt:Date.now()}));setProductionPlan(h.productionPlan?JSON.parse(JSON.stringify(h.productionPlan)):null);setProductionSelected(0);
 }
 function redo(){
