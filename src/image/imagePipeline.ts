@@ -135,11 +135,12 @@ export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='ba
  for(let i=0;i<w*h;i++)g[i]=Math.round(.299*d.data[i*4]+.587*d.data[i*4+1]+.114*d.data[i*4+2]);
  const t=detail==='low'?145:detail==='high'?185:165,b=new Uint8Array(w*h);
  for(let i=0;i<g.length;i++)b[i]=g[i]<t?1:0;
- const collect=(mask:Uint8Array)=>{const found=contours(thin(mask,w,h),w,h);for(const p of found){const q=rdp(p,detail==='low'?.010:detail==='high'?.003:.006);if(q.length>=3)lines.push({id:crypto.randomUUID(),points:q,width:3.5})}};
+ const collect=(mask:Uint8Array)=>{const found=contours(thin(mask,w,h),w,h);for(const p of found){const q=rdp(p,detail==='low'?.010:detail==='high'?.003:.006);if(q.length>=3)fallbackLines.push({id:crypto.randomUUID(),points:q,width:3.5})}};
+ const fallbackLines:Line[]=[];
  collect(b);
- if(lines.length===0){
+ if(fallbackLines.length===0){
   const thresholds=detail==='low'?[115,145,175]:detail==='high'?[145,175,205]:[125,155,185];
-  for(const threshold of thresholds){const alt=new Uint8Array(w*h);for(let i=0;i<g.length;i++)alt[i]=g[i]<threshold?1:0;collect(alt);if(lines.length>=2)break}
+  for(const threshold of thresholds){const alt=new Uint8Array(w*h);for(let i=0;i<g.length;i++)alt[i]=g[i]<threshold?1:0;collect(alt);if(fallbackLines.length>=2)break}
  }
- onProgress?.(100);return lines;
+ onProgress?.(100);return fallbackLines;
 }
