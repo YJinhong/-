@@ -11,6 +11,7 @@ import{saveProject,listProjects,deleteProject}from'./storage/projectStore';
 import{projectScales,polylineLengthMm,supportStickEndpoint}from'./geometry/units';
 import{downloadSvg,downloadPng,planPdf,zipProjects}from'./export/exporters';
 import{BatchProcessor}from'./batch/batchProcessor';
+import{solveConstraints}from'./cad/constraintSolver';
 
 const defaults={detail:'balanced' as const,minWidthMm:3.5,connectDistance:.06,simplifyTolerance:.015};
 const blank=():Project=>({id:crypto.randomUUID(),name:'Untitled Sugar Art',createdAt:Date.now(),updatedAt:Date.now(),lines:[],widthMm:300,heightMm:250,settings:defaults,warnings:[],sticks:[],connections:[],history:[],constraints:[]});
@@ -118,31 +119,8 @@ function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connection
  }
  function applyConstraint(type:CADConstraint['type'],value?:number){if(!selectedLine)return;const line=p.lines.find(l=>l.id===selectedLine);if(!line)return;const next=applyActiveConstraints(constrainLine(line,type,value),[...p.constraints??[],{id:'tmp',lineId:line.id,type,value,createdAt:Date.now()}],p.widthMm,p.heightMm,p.lines);const cst:CADConstraint={id:crypto.randomUUID(),lineId:line.id,type,value,createdAt:Date.now()};setP(q=>({...q,lines:q.lines.map(l=>l.id===line.id?next:l),constraints:[...(q.constraints??[]).filter(c=>!(c.lineId===line.id&&c.type===type)),cst],history:[...q.history,snapshot('CAD '+type,q.lines,q.sticks)],updatedAt:Date.now()}))}
  function applyActiveConstraints(line:Line,constraints:CADConstraint[],widthMm:number,heightMm:number,allLines:Line[]=[]):Line{
- let out={...line,points:line.points.map(q=>({...q}))};
- const cs=constraints.filter(v=>v.lineId===line.id);
- for(const c of cs){
-  const pts=out.points;if(pts.length<2)continue;const a=pts[0],b=pts[pts.length-1];
-  if(c.type==='horizontal')for(const q of pts)q.y=a.y;
-  if(c.type==='vertical')for(const q of pts)q.x=a.x;
-  if(c.type==='x'&&c.value!==undefined){const dx=c.value/widthMm-a.x;for(const q of pts)q.x+=dx}
-  if(c.type==='y'&&c.value!==undefined){const dy=c.value/heightMm-a.y;for(const q of pts)q.y+=dy}
-  if((c.type==='length'||c.type==='angle')&&c.value!==undefined){
-   const dx=(b.x-a.x)*widthMm,dy=(b.y-a.y)*heightMm,len=Math.hypot(dx,dy)||1,targetLen=c.type==='length'?c.value:len,targetAng=c.type==='angle'?c.value*Math.PI/180:Math.atan2(dy,dx),rot=targetAng-Math.atan2(dy,dx),k=targetLen/len;
-   for(let i=1;i<pts.length;i++){const rx=(pts[i].x-a.x)*widthMm,ry=(pts[i].y-a.y)*heightMm,xx=(rx*Math.cos(rot)-ry*Math.sin(rot))*k,yy=(rx*Math.sin(rot)+ry*Math.cos(rot))*k;pts[i].x=a.x+xx/widthMm;pts[i].y=a.y+yy/heightMm}
-  }
-  if(c.type==='fixedPoint'&&c.value!==undefined&&c.value2!==undefined){const dx=c.value/widthMm-a.x,dy=c.value2/heightMm-a.y;for(const q of pts){q.x+=dx;q.y+=dy}}
-  if((c.type==='parallel'||c.type==='perpendicular'||c.type==='equalLength')&&c.referenceLineId){
-   const ref=allLines.find(v=>v.id===c.referenceLineId);if(ref&&ref.points.length>1){
-    const ra=ref.points[0],rb=ref.points.at(-1)!,ta=pts[0],tb=pts.at(-1)!;
-    const rdx=(rb.x-ra.x)*widthMm,rdy=(rb.y-ra.y)*heightMm,tl=Math.hypot((tb.x-ta.x)*widthMm,(tb.y-ta.y)*heightMm)||1,rl=Math.hypot(rdx,rdy)||1;
-    const ang=Math.atan2(rdy,rdx)+(c.type==='perpendicular'?Math.PI/2:0),len=c.type==='equalLength'?rl:tl,rot=ang-Math.atan2((tb.y-ta.y)*heightMm,(tb.x-ta.x)*widthMm),k=len/tl;
-    for(let i=1;i<pts.length;i++){const rx=(pts[i].x-ta.x)*widthMm,ry=(pts[i].y-ta.y)*heightMm,xx=(rx*Math.cos(rot)-ry*Math.sin(rot))*k,yy=(rx*Math.sin(rot)+ry*Math.cos(rot))*k;pts[i].x=ta.x+xx/widthMm;pts[i].y=ta.y+yy/heightMm}
-   }
-  }
-  if((c.type==='horizontalDistance'||c.type==='verticalDistance')&&c.referenceLineId&&c.value!==undefined){
-   const ref=allLines.find(v=>v.id===c.referenceLineId);if(ref){const ra=ref.points[0],ta=pts[0];if(c.type==='horizontalDistance'){const target=ra.x+(c.value/widthMm)*(ta.x>=ra.x?1:-1);const dx=target-ta.x;for(const q of pts)q.x+=dx}else{const target=ra.y+(c.value/heightMm)*(ta.y>=ra.y?1:-1);const dy=target-ta.y;for(const q of pts)q.y+=dy}}}
- }
- return out
+ const seed=allLines.map(l=>l.id===line.id?line:l);
+ return solveConstraints(seed,constraints,widthMm,heightMm,8).lines.find(l=>l.id===line.id)??line;
 }
  function setConstraintValue(type:CADConstraint['type'],value:number){if(!selectedLine||!Number.isFinite(value))return;const line=p.lines.find(l=>l.id===selectedLine);if(!line)return;const now=Date.now(),base=(p.constraints??[]).filter(c=>!(c.lineId===selectedLine&&c.type===type)),existing=(p.constraints??[]).find(c=>c.lineId===selectedLine&&c.type===type),constraint:CADConstraint={id:existing?.id??crypto.randomUUID(),lineId:selectedLine,type,value,createdAt:existing?.createdAt??now};const next=applyActiveConstraints(constrainLine(line,type,value),[...base,constraint],p.widthMm,p.heightMm,p.lines);setP(q=>({...q,lines:q.lines.map(l=>l.id===selectedLine?next:l),constraints:[...base,constraint],history:[...q.history,snapshot('Edit CAD '+type,q.lines,q.sticks)],updatedAt:now}))}
  function applyRelation(type:'parallel'|'perpendicular'|'equalLength',source:Line,target:Line){
