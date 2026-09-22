@@ -172,7 +172,7 @@ export default function App(){
    arrow(ax,dimY,Math.atan2(0,bx-ax));arrow(bx,dimY,Math.atan2(0,ax-bx));arrow(dimX,ay,Math.atan2(by-ay,0));arrow(dimX,by,Math.atan2(ay-by,0));
    x.fillStyle=dark?'#fff':'#111';x.strokeStyle='#f59e0b';x.lineWidth=2;
    for(const q of [[ax,ay],[bx,by]]){x.beginPath();x.arc(q[0],q[1],5,0,Math.PI*2);x.fill();x.stroke()}
-   const labels=[[dx.toFixed(1)+' mm',(ax+bx)/2,dimY+(dimY>ay?16:-10)],[dy.toFixed(1)+' mm',dimX+(dimX>ax?16:-16),(ay+by)/2],[d.toFixed(1)+' mm',(ax+bx)/2,(ay+by)/2-12]];
+   const labels:Array<[string,number,number]>=[[dx.toFixed(1)+' mm',(ax+bx)/2,dimY+(dimY>ay?16:-10)],[dy.toFixed(1)+' mm',dimX+(dimX>ax?16:-16),(ay+by)/2],[d.toFixed(1)+' mm',(ax+bx)/2,(ay+by)/2-12]];
    x.font='600 11px system-ui';x.textAlign='center';x.textBaseline='middle';
    for(const [txt,lx,ly] of labels){const tw=x.measureText(txt).width+12;x.fillStyle=dark?'rgba(16,18,22,.94)':'rgba(255,255,255,.95)';x.beginPath();x.roundRect(lx-tw/2,ly-10,tw,20,5);x.fill();x.fillStyle=dark?'#f1f3f5':'#171717';x.fillText(txt,lx,ly)}
    x.restore();
@@ -358,7 +358,7 @@ function redo(){
   const width=520,height=Math.max(180,Math.ceil(nodes.length/3)*92);
   const pos=(i:number)=>({x:70+(i%3)*190,y:42+Math.floor(i/3)*82});
   return <div className="diagnosticGraph"><div className="row"><b>Conflict Graph</b><small>{nodes.length} constraints · click a node to locate</small></div><svg viewBox={`0 0 ${width} ${height}`} style={{width:'100%',height:'auto',background:'rgba(127,127,127,.06)',borderRadius:8}}>
-   {bad.flatMap(d=>d.conflictingIds.map(id=>[d.id,id] as const)).filter(([a,b])=>a!==b).map(([a,b],i)=>{
+   {bad.flatMap(d=>d.conflictingIds.map((id:string)=>[d.id,id] as const)).filter(([a,b])=>a!==b).map(([a,b],i)=>{
     const A=nodes.find(n=>n.id===a),B=nodes.find(n=>n.id===b);if(!A||!B)return null;const pa=pos(A.i),pb=pos(B.i);
     return <line key={i} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="currentColor" strokeOpacity=".3" strokeWidth="2"/>})}
    {nodes.map(n=>{const d=ds.find(x=>x.id===n.id),q=pos(n.i);return <g key={n.id} onClick={()=>locateConstraint(n.id)} style={{cursor:'pointer'}}><circle cx={q.x} cy={q.y} r="25" fill={d?.severity==='conflict'?'#ef5350':'#f59e0b'} fillOpacity=".18" stroke={d?.severity==='conflict'?'#ef5350':'#f59e0b'} strokeWidth="2"/><text x={q.x} y={q.y-3} textAnchor="middle" fontSize="11" fill="currentColor">{constraintLabel(n.c)}</text><text x={q.x} y={q.y+12} textAnchor="middle" fontSize="9" fill="currentColor">{n.c.type}</text></g>})}
@@ -401,7 +401,7 @@ function graphNodeAt(pt:{x:number;y:number}){const nodes=rebuildGraph(p.lines);l
 function hitNode(pt:{x:number;y:number}){let best:{lineId:string;index:number}|null=null,bd=.028;for(const l of p.lines)for(let i=0;i<l.points.length;i++){const q=l.points[i],d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<bd){bd=d;best={lineId:l.id,index:i}}}return best}
  function hitLine(pt:{x:number;y:number}){let best:string|null=null,bd=.035;for(const l of p.lines)for(const q of l.points){const d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<bd){bd=d;best=l.id}}return best}
  function pointToSegmentDistance(pt:{x:number;y:number},a:{x:number;y:number},b:{x:number;y:number}){const vx=b.x-a.x,vy=b.y-a.y,wx=pt.x-a.x,wy=pt.y-a.y,t=Math.max(0,Math.min(1,(wx*vx+wy*vy)/(vx*vx+vy*vy||1))),q={x:a.x+vx*t,y:a.y+vy*t};return Math.hypot(pt.x-q.x,pt.y-q.y)}
- function diagnosticHit(pt:{x:number;y:number}){
+ function diagnosticHit(pt:{x:number;y:number}):string|null{
   const ds=diagnoseConstraints(p.lines,(p.constraints??[]),p.widthMm,p.heightMm,12).filter(d=>d.severity!=='ok');
   let best:{id:string;distance:number}|null=null;
   const consider=(id:string,distance:number,limit:number)=>{if(distance<=limit&&(!best||distance<best.distance))best={id,distance}};
