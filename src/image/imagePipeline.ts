@@ -33,22 +33,27 @@ function components(mask:Uint8Array,w:number,h:number,minSize:number){
  }return out
 }
 
-function traceComponent(mask:Uint8Array,w:number,h:number,component:Point[]):Point[]{
+function traceComponentPaths(mask:Uint8Array,w:number,h:number,component:Point[]):Point[][]{
  const allowed=new Set(component.map(p=>p.x+','+p.y));
- const degree=(p:Point)=>{let n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if((dx||dy)&&allowed.has((p.x+dx)+','+(p.y+dy)))n++;return n};
- const endpoints=component.filter(p=>degree(p)===1);
- const start=endpoints[0]??component[0];
- const out:Point[]=[];let cur={...start},prev={x:start.x-1,y:start.y};const seen=new Set<string>();
- for(let k=0;k<component.length;k++){out.push({x:cur.x/w-.5,y:cur.y/h-.5});seen.add(cur.x+','+cur.y);
-  let next:{x:number;y:number}|undefined,best=Infinity;
-  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const q={x:cur.x+dx,y:cur.y+dy};
-   if(!allowed.has(q.x+','+q.y)||seen.has(q.x+','+q.y))continue;
-   const d=(q.x-prev.x)**2+(q.y-prev.y)**2;if(d<best){best=d;next=q}
+ const neighbors=(p:Point)=>{const out:Point[]=[];for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(dx||dy){const q={x:p.x+dx,y:p.y+dy};if(allowed.has(q.x+','+q.y))out.push(q)}return out};
+ const deg=new Map<string,number>();for(const p of component)deg.set(p.x+','+p.y,neighbors(p).length);
+ const edgeKey=(a:Point,b:Point)=>{const A=a.x+','+a.y,B=b.x+','+b.y;return A<B?A+'|'+B:B+'|'+A};
+ const used=new Set<string>(),paths:Point[][]=[];
+ const starts=component.filter(p=>(deg.get(p.x+','+p.y)??0)!==2);
+ const walk=(start:Point,next:Point)=>{
+  const path=[{...start}],prev={...start},cur={...next};used.add(edgeKey(prev,cur));path.push({...cur});
+  while((deg.get(cur.x+','+cur.y)??0)===2){
+   const ns=neighbors(cur),n=dist(ns[0],prev)>0?ns[0]:ns[1];const k=edgeKey(cur,n);if(used.has(k))break;
+   used.add(k);prev={...cur};cur={...n};path.push({...cur});
   }
-  if(!next)break;prev=cur;cur=next
- }return out
+  return path.map(p=>({x:p.x/w-.5,y:p.y/h-.5}))
+ };
+ for(const s of starts)for(const n of neighbors(s)){if(!used.has(edgeKey(s,n))){const p=walk(s,n);if(p.length>=2)paths.push(p)}}
+ if(!paths.length){
+  const s=component[0],ns=neighbors(s);if(ns.length){const p=walk(s,ns[0]);if(p.length>=2)paths.push(p)}
+ }
+ return paths
 }
-
 function rdp(points:Point[],eps:number):Point[]{
  if(points.length<3)return points;let max=0,idx=0,a=points[0],b=points.at(-1)!;
  for(let i=1;i<points.length-1;i++){const d=Math.abs((b.x-a.x)*(a.y-points[i].y)-(a.x-points[i].x)*(b.y-a.y))/(Math.hypot(b.x-a.x,b.y-a.y)||1);if(d>max){max=d;idx=i}}
@@ -101,8 +106,8 @@ async function localTrace(file:File,detail:'low'|'balanced'|'high'):Promise<Line
  const skeleton=thin(binary,w,h);
  const minSize=detail==='low'?Math.max(18,Math.round(w*h*.000015)):detail==='high'?Math.max(8,Math.round(w*h*.000006)):Math.max(12,Math.round(w*h*.00001));
  const parts=components(skeleton,w,h,minSize),eps=detail==='low'?.014:detail==='high'?.006:.009,lines:Line[]=[];
- for(const part of parts){
-  const pts=traceComponent(skeleton,w,h,part),simp=rdp(pts,eps);
+ for(const part of parts)for(const pts of traceComponentPaths(skeleton,w,h,part)){
+  const simp=rdp(pts,eps);
   if(simp.length>=2)lines.push({id:crypto.randomUUID(),points:simp,width:3.5})
  }
  return dedupe(mergeNearby(lines,detail==='low'?.022:.018)).sort((a,b)=>lineLength(b)-lineLength(a))
