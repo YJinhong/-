@@ -169,12 +169,47 @@ export default function App(){
   x.fillStyle=dark?'#f59e0b':'#9a6700';x.font='600 10px system-ui';x.textAlign='left';x.fillText('0',ox+4,topH+11);x.fillStyle=dark?'#707784':'#8a919c';x.fillText('mm',w-18,19);x.fillText('mm',5,topH+12);x.restore();
  },[p,zoom,pan,dark,grid,playing,playIndex,viewMode,overlayOpacity,measureStart,measureEnd,cursorPoint,selectedLines,selectionBox,diagnosticFocus,diagnosticHover]);
  function snapshot(label:string,lines=p.lines,sticks=p.sticks){return{id:crypto.randomUUID(),createdAt:Date.now(),label,lines:cloneLines(lines),sticks:sticks.map(s=>({...s})),constraints:(p.constraints??[]).map(c=>({...c}))}}
- async function importFiles(fs:FileList|null){if(!fs)return;const files=Array.from(fs);if(!files.length)return;batchFilesRef.current=files;setBatchFiles(files);setBatchOpen(true);setBatchPaused(false);const processor=new BatchProcessor();batchProcessor.current=processor;const meta=await Promise.all(files.map(f=>new Promise<{thumbnail:string;width?:number;height?:number}>(resolve=>{const fr=new FileReader();fr.onload=()=>{const src=String(fr.result);const img=new Image();img.onload=()=>resolve({thumbnail:src,width:img.naturalWidth,height:img.naturalHeight});img.onerror=()=>resolve({thumbnail:src});img.src=src};fr.readAsDataURL(f)})));setBatchJobs(files.map((f,i)=>({id:crypto.randomUUID(),fileName:f.name,size:f.size,status:'queued',progress:0,sourceIndex:i,...meta[i]})));const results=await processor.runWithResults(files,p.settings.detail,j=>setBatchJobs(j.map((job,i)=>({...job,...meta[job.sourceIndex??i]}))));for(let i=0;i<files.length;i++){const r=results[i];if(!r)continue;const imageData=meta[i].thumbnail;setP(q=>({...q,name:files[i].name.replace(/\.[^.]+$/,''),originalName:files[i].name,imageData,lines:cloneLines(r.lines),connections:[],history:[...q.history,snapshot('Imported '+files[i].name,q.lines)],updatedAt:Date.now()}))}processor.dispose();batchProcessor.current=null}
+ async function importFiles(fs:FileList|null){if(!fs)return;const files=Array.from(fs);if(!files.length)return;batchFilesRef.current=files;setBatchFiles(files);setBatchOpen(true);setBatchPaused(false);const processor=new BatchProcessor();batchProcessor.current=processor;const meta=await Promise.all(files.map(f=>new Promise<{thumbnail:string;width?:number;height?:number}>(resolve=>{const fr=new FileReader();fr.onload=()=>{const src=String(fr.result);const img=new Image();img.onload=()=>resolve({thumbnail:src,width:img.naturalWidth,height:img.naturalHeight});img.onerror=()=>resolve({thumbnail:src});img.src=src};fr.readAsDataURL(f)})));setBatchJobs(files.map((f,i)=>({id:crypto.randomUUID(),fileName:f.name,size:f.size,status:'queued',progress:0,sourceIndex:i,...meta[i]})));const results=await processor.runWithResults(files,p.settings.detail,j=>setBatchJobs(j.map((job,i)=>({...job,...meta[job.sourceIndex??i]}))));
+const created:Project[]=[];
+for(let i=0;i<files.length;i++){
+  const r=results[i];if(!r)continue;
+  const lines=cloneLines(r.lines);
+  const graph=rebuildGraph(lines);
+  const connections=findConnectionCandidates(lines,p.settings.connectDistance);
+  const warnings=[...analyze(lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))];
+  const now=Date.now();
+  const project:Project={...blank(),id:crypto.randomUUID(),name:files[i].name.replace(/\.[^.]+$/,''),createdAt:now,updatedAt:now,originalName:files[i].name,imageData:meta[i].thumbnail,lines,connections,warnings,sticks:recommendSticks(lines),settings:{...p.settings},history:[]};
+  created.push(project);
+  await saveProject(project);
+  setBatchJobs(js=>js.map(j=>j.sourceIndex===i?{...j,projectId:project.id}:j));
+}
+if(created.length){
+  setProjects(xs=>[...created,...xs.filter(x=>!created.some(n=>n.id===x.id))]);
+  setP(created[created.length-1]);
+}
+processor.dispose();batchProcessor.current=null}
 function pauseBatch(){const x=batchProcessor.current;if(!x)return;if(batchPaused){x.resume();setBatchPaused(false)}else{x.pause();setBatchPaused(true)}}
 function cancelBatch(){batchProcessor.current?.cancel();setBatchPaused(false)}
 async function retryBatch(id:string){const job=batchJobs.find(j=>j.id===id),idx=job?.sourceIndex;if(!job||idx===undefined)return;const file=batchFilesRef.current[idx];if(!file)return;const processor=new BatchProcessor();setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'processing',progress:5,error:undefined}:j));try{const lines=await processor.process(file,p.settings.detail);setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'done',progress:100,lines}:j));openBatchResult({...job,status:'done',progress:100,lines})}catch(e){setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'error',error:e instanceof Error?e.message:String(e)}:j))}finally{processor.dispose()}}
 function removeBatch(id:string){setBatchJobs(js=>js.filter(j=>j.id!==id))}
-async function openBatchResult(job:BatchJob){if(!job.lines||job.sourceIndex===undefined)return;const file=batchFilesRef.current[job.sourceIndex];let imageData=job.thumbnail;if(file){imageData=await new Promise<string>(resolve=>{const fr=new FileReader();fr.onload=()=>resolve(String(fr.result));fr.readAsDataURL(file)})}setP(q=>({...q,name:job.fileName.replace(/\.[^.]+$/,''),originalName:job.fileName,imageData,lines:cloneLines(job.lines!),connections:[],history:[...q.history,snapshot('Open batch result',q.lines)],updatedAt:Date.now()}));setBatchOpen(false)}
+async function openBatchResult(job:BatchJob){
+  if(job.projectId){
+    const saved=projects.find(x=>x.id===job.projectId);
+    if(saved){setP(normalize(saved));setBatchOpen(false);return}
+    const stored=await listProjects();
+    const found=stored.map(normalize).find(x=>x.id===job.projectId);
+    if(found){setP(found);setProjects(xs=>[found,...xs.filter(x=>x.id!==found.id)]);setBatchOpen(false);return}
+  }
+  if(!job.lines||job.sourceIndex===undefined)return;
+  const file=batchFilesRef.current[job.sourceIndex];
+  let imageData=job.thumbnail;
+  if(file)imageData=await new Promise<string>(resolve=>{const fr=new FileReader();fr.onload=()=>resolve(String(fr.result));fr.readAsDataURL(file)});
+  const now=Date.now();
+  const project:Project={...blank(),id:crypto.randomUUID(),name:job.fileName.replace(/\.[^.]+$/,''),createdAt:now,updatedAt:now,originalName:job.fileName,imageData,lines:cloneLines(job.lines),connections:findConnectionCandidates(job.lines,p.settings.connectDistance),warnings:analyze(job.lines),sticks:recommendSticks(job.lines),settings:{...p.settings}};
+  await saveProject(project);
+  setProjects(xs=>[project,...xs.filter(x=>x.id!==project.id)]);
+  setP(project);setBatchOpen(false)
+}
 function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connections=findConnectionCandidates(q.lines,q.settings.connectDistance),warnings=[...analyze(q.lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))];return{...q,connections,warnings,sticks:recommendSticks(q.lines),updatedAt:Date.now()}})}
  function runOptimize(){const r=sugarArtify(p.lines,p.settings);const path=minimumPenLiftPath(r.lines);const lines=path.order;const connections=findConnectionCandidates(lines,p.settings.connectDistance);const graph=rebuildGraph(lines);setP(q=>({...q,lines,connections,warnings:[...analyze(lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))],sticks:recommendSticks(lines),history:[...q.history,snapshot('Sugar Artify + graph rebuild',q.lines)],updatedAt:Date.now()}))}
  function acceptConnection(id:string){setP(q=>{const connections=q.connections.map(c=>c.id===id?{...c,status:'accepted' as const}:c);return{...q,connections,updatedAt:Date.now()}})}
