@@ -1,0 +1,4 @@
+export type OpenCVModule=any;
+let cvPromise:Promise<OpenCVModule>|null=null;
+export function loadOpenCV():Promise<OpenCVModule>{if(cvPromise)return cvPromise;cvPromise=import('@techstark/opencv-js').then((m:any)=>{const cv=m.default??m;if(typeof cv==='function')return new Promise(resolve=>{cv.onRuntimeInitialized=()=>resolve(cv)});if(cv?.onRuntimeInitialized)return new Promise(resolve=>{cv.onRuntimeInitialized=()=>resolve(cv)});return cv});return cvPromise}
+export async function opencvThreshold(gray:Uint8Array,width:number,height:number,threshold=165){const cv=await loadOpenCV();const src=new cv.Mat(height,width,cv.CV_8UC1);src.data.set(gray);const dst=new cv.Mat();cv.threshold(src,dst,threshold,255,cv.THRESH_BINARY_INV);const data=new Uint8Array(dst.data);const out=new Uint8Array(data.length);out.set(data);src.delete();dst.delete();return out}
