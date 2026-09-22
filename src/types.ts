@@ -9,4 +9,6 @@ export type CADConstraint={id:string;lineId:string;type:'length'|'horizontal'|'v
 export type Version={id:string;createdAt:number;label:string;lines:Line[];sticks?:SupportStick[];constraints?:CADConstraint[]};
 export type Project={id:string;name:string;createdAt:number;updatedAt:number;imageData?:string;originalName?:string;lines:Line[];widthMm:number;heightMm:number;settings:OptimizationSettings;warnings:StructuralWarning[];sticks:SupportStick[];connections:ConnectionCandidate[];history:Version[];constraints?:CADConstraint[]};
 export type BatchJob={id:string;fileName:string;size:number;status:'queued'|'processing'|'done'|'error'|'paused'|'cancelled';progress:number;projectId?:string;error?:string;sourceIndex?:number;thumbnail?:string;width?:number;height?:number;lines?:Line[]};
+export type ProductionStep={id:string;index:number;lineId:string;action:'DRAW'|'LIFT'|'CLOSE'|'SUPPORT';lengthMm:number;start:Point;end:Point;penLiftBefore:boolean;supportStickId?:string;note:string};
+export type ProductionPlan={id:string;createdAt:number;estimatedPenLifts:number;totalLengthMm:number;steps:ProductionStep[];summary:string[]};
 export type PipelineResult={lines:Line[];connections:ConnectionCandidate[];removed:number;warnings:StructuralWarning[];sticks:SupportStick[]};
