@@ -4,51 +4,44 @@ export function svg(project:Project){const w=project.widthMm,h=project.heightMm;
 export function downloadSvg(p:Project){saveAs(new Blob([svg(p)],{type:'image/svg+xml'}),p.name+'.svg')}
 export async function downloadPng(p:Project){const img=new Image();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg(p));await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=()=>reject(new Error('Unable to render SVG to PNG'))});const scale=3,w=Math.max(1,Math.round(p.widthMm*scale)),h=Math.max(1,Math.round(p.heightMm*scale)),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d')!.drawImage(img,0,0,w,h);c.toBlob(b=>b?saveAs(b,p.name+'.png'):undefined,'image/png')}
 function planText(p:Project){return ['SUGAR DRAW PRODUCTION PLAN','Project: '+p.name,'Size: '+p.widthMm+' × '+p.heightMm+' mm','Line segments: '+p.lines.length,'Total path length: '+p.lines.reduce((a,l)=>a+l.points.slice(1).reduce((n,q,i)=>n+Math.hypot((q.x-l.points[i].x)*p.widthMm,(q.y-l.points[i].y)*p.heightMm),0),0).toFixed(1)+' mm','Minimum line width setting: '+p.settings.minWidthMm+' mm','Support sticks: '+p.sticks.length,'Warnings: '+p.warnings.length,'','SUPPORT STICKS',...p.sticks.map((s,i)=>'#'+(i+1)+' · '+s.kind+' · '+Math.round(s.length)+' mm · '+Math.round(s.angle)+'° · score '+Math.round(s.score)),'','WARNINGS',...p.warnings.map(w=>w.severity.toUpperCase()+': '+w.message),'','NOTE: Structural analysis is geometric/heuristic and is not a material mechanics simulation.'].join('\n')}
+function pdfDimLine(page:any,x1:number,y1:number,x2:number,y2:number,label:string,font:any){
+ const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
+ page.drawLine({start:{x:x1,y:y1},end:{x:x2,y:y2},thickness:.55,color:rgb(.25,.25,.28)});
+ page.drawLine({start:{x:x1-nx*4,y:y1-ny*4},end:{x:x1+nx*4,y:y1+ny*4},thickness:.55,color:rgb(.25,.25,.28)});
+ page.drawLine({start:{x:x2-nx*4,y:y2-ny*4},end:{x:x2+nx*4,y:y2+ny*4},thickness:.55,color:rgb(.25,.25,.28)});
+ const mx=(x1+x2)/2+nx*7,my=(y1+y2)/2+ny*7;
+ page.drawText(label,{x:mx-font.widthOfTextAtSize(label,7)/2,y:my-2,size:7,font,color:rgb(.2,.2,.22)});
+}
 export async function planPdf(p:Project){
  const doc=await PDFDocument.create();
  const font=await doc.embedFont(StandardFonts.Helvetica);
  const pageW=595,pageH=842,margin=36;
  const page=doc.addPage([pageW,pageH]);
- let y=pageH-margin;
- page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:margin,y,size:20,font,color:rgb(.08,.08,.1)});
- y-=24;
- page.drawText(p.name.slice(0,70),{x:margin,y,size:11,font,color:rgb(.3,.3,.34)});
- y-=24;
- page.drawText('WORKING DRAWING',{x:margin,y,size:9,font,color:rgb(.35,.35,.4)});
- y-=12;
+ page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:margin,y:pageH-margin,size:20,font,color:rgb(.08,.08,.1)});
+ page.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-24,size:11,font,color:rgb(.3,.3,.34)});
+ page.drawText('WORKING DRAWING',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
  const frameX=margin,frameY=300,frameW=pageW-margin*2,frameH=360;
  page.drawRectangle({x:frameX,y:frameY,width:frameW,height:frameH,borderWidth:1,borderColor:rgb(.65,.66,.7)});
- const sx=frameW/p.widthMm,sy=frameH/p.heightMm,scale=Math.min(sx,sy);
+ const scale=Math.min(frameW/p.widthMm,frameH/p.heightMm);
  const ox=frameX+(frameW-p.widthMm*scale)/2,oy=frameY+(frameH-p.heightMm*scale)/2;
  page.drawRectangle({x:ox,y:oy,width:p.widthMm*scale,height:p.heightMm*scale,borderWidth:.5,borderColor:rgb(.82,.83,.86)});
  const px=(q:{x:number;y:number})=>ox+(q.x+.5)*p.widthMm*scale;
  const py=(q:{x:number;y:number})=>oy+(q.y+.5)*p.heightMm*scale;
- for(const l of p.lines){
-  for(let i=1;i<l.points.length;i++){
-   const a=l.points[i-1],b=l.points[i];
-   page.drawLine({start:{x:px(a),y:py(a)},end:{x:px(b),y:py(b)},thickness:Math.max(.6,Math.min(5,l.width*scale)),color:rgb(.05,.05,.06)});
-  }
- }
- for(const s of p.sticks){
-  const e=supportStickEndpoint(s,p.widthMm,p.heightMm);
-  page.drawLine({start:{x:px(s),y:py(s)},end:{x:px(e),y:py(e)},thickness:.8,color:rgb(.1,.65,.4),dashArray:[3,2]});
- }
- y=280;
+ for(const l of p.lines)for(let i=1;i<l.points.length;i++){const a=l.points[i-1],b=l.points[i];page.drawLine({start:{x:px(a),y:py(a)},end:{x:px(b),y:py(b)},thickness:Math.max(.6,Math.min(5,l.width*scale)),color:rgb(.05,.05,.06)})}
+ for(const st of p.sticks){const en=supportStickEndpoint(st,p.widthMm,p.heightMm);page.drawLine({start:{x:px(st),y:py(st)},end:{x:px(en),y:py(en)},thickness:.8,color:rgb(.1,.65,.4),dashArray:[3,2]})}
+ const dimGap=18;
+ pdfDimLine(page,ox,oy-dimGap,ox+p.widthMm*scale,oy-dimGap,p.widthMm.toFixed(1)+' mm',font);
+ pdfDimLine(page,ox-dimGap,oy,ox-dimGap,oy+p.heightMm*scale,p.heightMm.toFixed(1)+' mm',font);
+ page.drawText('Scale: 1 drawing unit = '+scale.toFixed(2)+' pt/mm',{x:margin,y:286,size:7,font,color:rgb(.45,.45,.48)});
+ let y=266;
  const cols=[margin,190,350,470];
- const header=['ITEM','VALUE','ITEM','VALUE'];
- header.forEach((t,i)=>page.drawText(t,{x:cols[i],y,size:8,font,color:rgb(.4,.4,.44)}));
- y-=14;
- const rows=[
-  ['Canvas',p.widthMm+' × '+p.heightMm+' mm','Lines',String(p.lines.length)],
-  ['Min width',p.settings.minWidthMm+' mm','Sticks',String(p.sticks.length)],
-  ['Path length',p.lines.reduce((a,l)=>a+l.points.slice(1).reduce((n,q,i)=>n+Math.hypot((q.x-l.points[i].x)*p.widthMm,(q.y-l.points[i].y)*p.heightMm),0),0).toFixed(1)+' mm','Warnings',String(p.warnings.length)],
- ];
+ ['ITEM','VALUE','ITEM','VALUE'].forEach((t,i)=>page.drawText(t,{x:cols[i],y,size:8,font,color:rgb(.4,.4,.44)}));y-=14;
+ const pathLength=p.lines.reduce((a,l)=>a+l.points.slice(1).reduce((n,q,i)=>n+Math.hypot((q.x-l.points[i].x)*p.widthMm,(q.y-l.points[i].y)*p.heightMm),0),0);
+ const rows=[['Canvas',p.widthMm+' × '+p.heightMm+' mm','Lines',String(p.lines.length)],['Min width',p.settings.minWidthMm+' mm','Sticks',String(p.sticks.length)],['Path length',pathLength.toFixed(1)+' mm','Warnings',String(p.warnings.length)]];
  for(const row of rows){row.forEach((t,i)=>page.drawText(t.slice(0,24),{x:cols[i],y,size:9,font,color:rgb(.12,.12,.14)}));y-=15}
- y-=8;
- page.drawText('SUPPORT STICKS',{x:margin,y,size:10,font});y-=15;
- for(const s of p.sticks.slice(0,8)){page.drawText((s.kind+' · '+Math.round(s.length)+' mm · '+Math.round(s.angle)+'° · score '+Math.round(s.score)).slice(0,80),{x:margin,y,size:8,font});y-=12}
- y-=4;
- page.drawText('WARNINGS',{x:margin,y,size:10,font});y-=15;
+ y-=8;page.drawText('SUPPORT STICKS',{x:margin,y,size:10,font});y-=15;
+ for(const st of p.sticks.slice(0,8)){page.drawText((st.kind+' · '+Math.round(st.length)+' mm · '+Math.round(st.angle)+'° · score '+Math.round(st.score)).slice(0,80),{x:margin,y,size:8,font});y-=12}
+ y-=4;page.drawText('WARNINGS',{x:margin,y,size:10,font});y-=15;
  for(const w of p.warnings.slice(0,8)){page.drawText((w.severity.toUpperCase()+': '+w.message).slice(0,90),{x:margin,y,size:8,font});y-=12}
  page.drawText('Structural analysis is geometric/heuristic; it is not a material mechanics simulation.',{x:margin,y:24,size:7,font,color:rgb(.45,.45,.48)});
  saveAs(new Blob([await doc.save()],{type:'application/pdf'}),p.name+'-plan.pdf')
