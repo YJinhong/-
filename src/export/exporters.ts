@@ -1,4 +1,4 @@
-import{PDFDocument,StandardFonts,rgb}from'pdf-lib';import JSZip from'jszip';import{saveAs}from'file-saver';import type{Project}from'../types';
+import{PDFDocument,StandardFonts,rgb}from'pdf-lib';import JSZip from'jszip';import{saveAs}from'file-saver';import type{Project,Line}from'../types';
 import{supportStickEndpoint}from'../geometry/units';
 export function svg(project:Project){const w=project.widthMm,h=project.heightMm;const body=project.lines.map(l=>'<polyline fill="none" stroke="black" stroke-linecap="round" stroke-linejoin="round" stroke-width="'+l.width+'" points="'+l.points.map(p=>((p.x+.5)*w)+','+((p.y+.5)*h)).join(' ')+'"/>').join('');const sticks=project.sticks.map(s=>{const a=s.angle*Math.PI/180;const endpoint=supportStickEndpoint(s,w,h),x2=endpoint.x,y2=endpoint.y;return '<line x1="'+((s.x+.5)*w)+'" y1="'+((s.y+.5)*h)+'" x2="'+((x2+.5)*w)+'" y2="'+((y2+.5)*h)+'" stroke="#36c275" stroke-width="1.2" stroke-dasharray="3 2"/>'}).join('');return '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="'+w+'mm" height="'+h+'mm" viewBox="0 0 '+w+' '+h+'"><rect width="100%" height="100%" fill="white"/>'+body+sticks+'</svg>'}
 export function downloadSvg(p:Project){saveAs(new Blob([svg(p)],{type:'image/svg+xml'}),p.name+'.svg')}
@@ -80,17 +80,33 @@ export async function planPdf(p:Project){
  detail.drawText('END NODE', {x:325,y:dy,size:8,font});
  detail.drawText('ACTION', {x:430,y:dy,size:8,font});
  dy-=12;
- p.lines.forEach((l,idx)=>{
-  if(dy<48){return}
+ p.lines.slice(0,18).forEach((l,idx)=>{
+  if(dy<82)return;
   const start=l.points[0],end=l.points[l.points.length-1],len=segLength(l);
   const sc=endpointConnections(l,'start'),ec=endpointConnections(l,'end');
-  const action=l.closed?'Complete closed path; no lift until closure.':(ec>0?'Finish at connected node; continue if the next step is accepted.':'Lift after endpoint; move to next step.');
-  detail.drawText(String(idx+1),{x:margin,y:dy,size:8,font});
-  detail.drawText(('L'+(idx+1)+' · '+len.toFixed(1)+' mm').slice(0,24),{x:90,y:dy,size:8,font});
-  detail.drawText((start?('('+start.x.toFixed(3)+', '+start.y.toFixed(3)+') · '+sc+' link'): '—').slice(0,31),{x:220,y:dy,size:7,font});
-  detail.drawText((end?('('+end.x.toFixed(3)+', '+end.y.toFixed(3)+') · '+ec+' link'): '—').slice(0,31),{x:325,y:dy,size:7,font});
-  detail.drawText(action.slice(0,28),{x:430,y:dy,size:7,font});
-  dy-=15;
+  const action=l.closed?'CLOSE':(ec>0?'CONTINUE':'LIFT');
+  const bx=margin,by=dy-8,bw=43,bh=32;
+  detail.drawRectangle({x:bx,y:by,width:bw,height:bh,borderWidth:.5,borderColor:rgb(.78,.79,.82)});
+  if(l.points.length>1){
+   const xs=l.points.map(q=>q.x),ys=l.points.map(q=>q.y);
+   const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+   const sx=35/Math.max(.001,maxX-minX),sy=24/Math.max(.001,maxY-minY),ss=Math.min(sx,sy);
+   const tx=(q:{x:number;y:number})=>bx+4+(q.x-minX)*ss+(35-(maxX-minX)*ss)/2;
+   const ty=(q:{x:number;y:number})=>by+4+(maxY-q.y)*ss+(24-(maxY-minY)*ss)/2;
+   for(let j=1;j<l.points.length;j++){
+    const a=l.points[j-1],b=l.points[j];
+    detail.drawLine({start:{x:tx(a),y:ty(a)},end:{x:tx(b),y:ty(b)},thickness:1,color:rgb(.08,.08,.09)});
+   }
+   detail.drawCircle({x:tx(l.points[0]),y:ty(l.points[0]),size:2.5,color:rgb(.1,.55,.35)});
+   detail.drawCircle({x:tx(end),y:ty(end),size:2.5,color:rgb(.75,.25,.2)});
+  }
+  detail.drawText(String(idx+1),{x:margin+48,y:dy+8,size:8,font});
+  detail.drawText(('L'+(idx+1)+' · '+len.toFixed(1)+' mm').slice(0,24),{x:90,y:dy+8,size:8,font});
+  detail.drawText((start?('('+start.x.toFixed(3)+', '+start.y.toFixed(3)+') · '+sc+' link'): '—').slice(0,31),{x:220,y:dy+8,size:7,font});
+  detail.drawText((end?('('+end.x.toFixed(3)+', '+end.y.toFixed(3)+') · '+ec+' link'): '—').slice(0,31),{x:325,y:dy+8,size:7,font});
+  detail.drawText(action,{x:430,y:dy+8,size:7,font});
+  detail.drawText('green=start · red=end',{x:90,y:dy-3,size:6,font,color:rgb(.45,.45,.48)});
+  dy-=42;
  });
  dy-=6;
  detail.drawText('CONNECTION / NODE MAP',{x:margin,y:dy,size:10,font});dy-=15;
