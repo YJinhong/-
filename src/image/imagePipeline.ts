@@ -55,13 +55,13 @@ async function decode(file:File):Promise<ImageBitmap|HTMLImageElement>{
  }finally{URL.revokeObjectURL(u)}
 }
 
-async function smartContours(file:File,detail:'low'|'balanced'|'high'):Promise<Line[]>{
- const cv=await loadOpenCV(),result=await opencvSugarMask(file,detail);
+async function smartContours(file:File,detail:'low'|'balanced'|'high',onProgress?:(value:number)=>void):Promise<Line[]>{
+ const cv=await loadOpenCV();onProgress?.(15);const result=await opencvSugarMask(file,detail);onProgress?.(45);
  const src=cv.matFromImageData(result.imageData),gray=new cv.Mat(),bin=new cv.Mat(),cs=new cv.MatVector(),hier=new cv.Mat(),lines:Line[]=[];
  try{
   cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
   cv.threshold(gray,bin,250,255,cv.THRESH_BINARY_INV);
-  cv.findContours(bin,cs,hier,cv.RETR_LIST,cv.CHAIN_APPROX_NONE);
+  cv.findContours(bin,cs,hier,cv.RETR_LIST,cv.CHAIN_APPROX_NONE);onProgress?.(60);
   const minArea=Math.max(12,result.width*result.height*(detail==='low'?.00005:detail==='high'?.00002:.000035));
   for(let i=0;i<cs.size();i++){
    const c=cs.get(i),area=Math.abs(cv.contourArea(c)),per=cv.arcLength(c,true);
@@ -75,19 +75,19 @@ async function smartContours(file:File,detail:'low'|'balanced'|'high'):Promise<L
    }
    approx.delete();c.delete();
   }
-  return lines;
+  onProgress?.(90);return lines;
  }finally{src.delete();gray.delete();bin.delete();cs.delete();hier.delete()}
 }
 
-export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='balanced'):Promise<Line[]>{
+export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='balanced',onProgress?:(value:number)=>void):Promise<Line[]>{
  try{
-  const smart=await smartContours(file,detail);
+  const smart=await smartContours(file,detail,onProgress);
   if(smart.length>0)return smart;
  }catch(e){
   console.warn('Smart contour pipeline unavailable, using local fallback',e);
  }
 
- const img=await decode(file),max=1000,scale=Math.min(1,max/Math.max(img.width,img.height)),
+ onProgress?.(10);const img=await decode(file);onProgress?.(30);const max=1000,scale=Math.min(1,max/Math.max(img.width,img.height)),
  w=Math.max(8,Math.round(img.width*scale)),h=Math.max(8,Math.round(img.height*scale)),
  c=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):document.createElement('canvas');
  c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true})!;ctx.drawImage(img,0,0,w,h);
@@ -96,7 +96,7 @@ export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='ba
  for(let i=0;i<w*h;i++)g[i]=Math.round(.299*d.data[i*4]+.587*d.data[i*4+1]+.114*d.data[i*4+2]);
  const t=detail==='low'?145:detail==='high'?185:165,b=new Uint8Array(w*h);
  for(let i=0;i<g.length;i++)b[i]=g[i]<t?1:0;
- const cs=contours(thin(b,w,h),w,h),lines:Line[]=[];
+ const cs=contours(thin(b,w,h),w,h),lines:Line[]=[];onProgress?.(75);
  for(const p of cs){const q=rdp(p,detail==='low'?.010:detail==='high'?.003:.006);if(q.length>=3)lines.push({id:crypto.randomUUID(),points:q,width:3.5})}
- return lines;
+ onProgress?.(100);return lines;
 }
