@@ -91,70 +91,32 @@ async function decode(file:File):Promise<ImageBitmap|HTMLImageElement>{
 }
 
 async function smartContours(file:File,detail:'low'|'balanced'|'high',onProgress?:(value:number)=>void):Promise<Line[]>{
- const cv=await loadOpenCV();onProgress?.(10);const result=await opencvSugarMask(file,detail);onProgress?.(35);
- const src=cv.matFromImageData(result.imageData),gray=new cv.Mat(),blur=new cv.Mat();
+ const cv=await loadOpenCV();onProgress?.(8);
+ const decoded=await decode(file);const max=1200,scale=Math.min(1,max/Math.max(decoded.width,decoded.height)),w=Math.max(32,Math.round(decoded.width*scale)),h=Math.max(32,Math.round(decoded.height*scale));
+ const canvas=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):document.createElement('canvas');canvas.width=w;canvas.height=h;
+ const ctx=canvas.getContext('2d',{willReadFrequently:true})!;ctx.drawImage(decoded,0,0,w,h);if(typeof ImageBitmap!=='undefined'&&decoded instanceof ImageBitmap)decoded.close();
+ const rgba=ctx.getImageData(0,0,w,h),src=cv.matFromImageData(rgba),rgb=new cv.Mat(),lab=new cv.Mat(),blur=new cv.Mat(),distance=new cv.Mat(),mask=new cv.Mat(),gray=new cv.Mat(),edges=new cv.Mat(),combined=new cv.Mat();
  try{
-  cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
-  const candidates:any[]=[];
-  const sugar=cv.matFromImageData(result.imageData);
-  candidates.push({mat:sugar,kind:'sugar'});
-  cv.GaussianBlur(gray,blur,new cv.Size(detail==='high'?3:5,detail==='high'?3:5),0,0,cv.BORDER_DEFAULT);
-  const edge=new cv.Mat();
-  cv.Canny(blur,edge,detail==='low'?45:detail==='high'?35:40,detail==='low'?115:detail==='high'?105:110,3,false);
-  const kernel=cv.getStructuringElement(cv.MORPH_ELLIPSE,new cv.Size(detail==='high'?2:3,detail==='low'?5:3));
-  cv.morphologyEx(edge,edge,cv.MORPH_CLOSE,kernel);kernel.delete();
-  candidates.push({mat:edge,kind:'edge'});
-  const adaptive=new cv.Mat();
-  cv.adaptiveThreshold(blur,adaptive,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,detail==='low'?31:25,detail==='high'?4:6);
-  candidates.push({mat:adaptive,kind:'adaptive'});
-
-  const extract=(mask:any):{lines:Line[];score:number}=>{
-   const cs=new cv.MatVector(),hier=new cv.Mat(),lines:Line[]=[];
-   let score=0;
-   try{
-    cv.findContours(mask,cs,hier,cv.RETR_LIST,cv.CHAIN_APPROX_NONE);
-    const minPerimeter=Math.max(14,Math.min(result.width,result.height)*.025);
-    for(let i=0;i<cs.size();i++){
-     const c=cs.get(i),per=cv.arcLength(c,true),box=cv.boundingRect(c);
-     const touchesBorder=box.x<=2||box.y<=2||box.x+box.width>=result.width-2||box.y+box.height>=result.height-2;
-     if(per<minPerimeter||(box.width<4&&box.height<4)){c.delete();continue}
-     if(touchesBorder&&per<result.width*1.2){c.delete();continue}
-     if(box.width>.97*result.width&&box.height>.97*result.height){c.delete();continue}
-     const approx=new cv.Mat(),eps=per*(detail==='low'?.012:detail==='high'?.004:.007);
-     cv.approxPolyDP(c,approx,eps,true);
-     const pts:Point[]=[];
-     for(let j=0;j<approx.rows;j++){const x=approx.data32S[j*2],y=approx.data32S[j*2+1];pts.push({x:x/result.width-.5,y:y/result.height-.5})}
-     if(pts.length>=3){
-      const span=Math.hypot(box.width,box.height);
-      const normalized=per/Math.max(1,Math.hypot(result.width,result.height));
-      const borderPenalty=touchesBorder?.18:1;
-      const tinyPenalty=span<Math.min(result.width,result.height)*.04?.12:1;
-      const complexityPenalty=Math.min(1,Math.max(0,pts.length-80)/160);
-      score+=normalized*borderPenalty*tinyPenalty*(1-complexityPenalty);
-      lines.push({id:crypto.randomUUID(),points:pts,width:3.5});
-     }
-     approx.delete();c.delete();
-     if(lines.length>=180)break;
-    }
-   }finally{cs.delete();hier.delete()}
-   const countPenalty=Math.min(.65,lines.length/220);
-   const kindPenalty=0;
-   return{lines,score:score*(1-countPenalty)+kindPenalty};
-  };
-
-  let best:Line[]=[];let bestScore=-Infinity;
-  for(const candidate of candidates){
-   const extracted=extract(candidate.mat);
-   let adjusted=extracted.score;
-   if(candidate.kind==='adaptive')adjusted*=.72;
-   if(candidate.kind==='sugar')adjusted*=1.08;
-   if(candidate.kind==='edge')adjusted*=1.12;
-   if(extracted.lines.length>0&&adjusted>bestScore){best=extracted.lines;bestScore=adjusted}
-   candidate.mat.delete?.();
-  }
-  onProgress?.(90);
-  return best;
- }finally{src.delete();gray.delete();blur.delete()}
+  cv.cvtColor(src,rgb,cv.COLOR_RGBA2RGB);cv.cvtColor(rgb,lab,cv.COLOR_RGB2Lab);cv.GaussianBlur(lab,blur,new cv.Size(5,5),0);
+  const bd=blur.data,step=Math.max(1,Math.floor(Math.min(w,h)/40)),samples:number[][]=[];
+  const add=(x:number,y:number)=>{const i=(y*w+x)*3;samples.push([bd[i],bd[i+1],bd[i+2]])};
+  for(let x=0;x<w;x+=step){add(x,0);add(x,h-1)}for(let y=0;y<h;y+=step){add(0,y);add(w-1,y)}
+  const bg=samples.reduce((a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],[0,0,0]).map(v=>v/Math.max(1,samples.length));
+  const dd=distance.data as Float32Array;let sum=0,count=0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*3;const d=Math.hypot(bd[i]-bg[0],bd[i+1]-bg[1],bd[i+2]-bg[2]);dd[y*w+x]=d;sum+=d;count++}
+  const mean=sum/Math.max(1,count);let variance=0;for(let i=0;i<dd.length;i++){const q=dd[i]-mean;variance+=q*q}
+  const std=Math.sqrt(variance/Math.max(1,dd.length));const threshold=Math.max(8,mean+std*(detail==='low'?.55:detail==='high'?.8:.65));
+  const md=mask.data as Uint8Array;for(let i=0;i<dd.length;i++)md[i]=dd[i]>=threshold?255:0;
+  const close=cv.getStructuringElement(cv.MORPH_ELLIPSE,new cv.Size(detail==='high'?5:detail==='low'?11:7,detail==='high'?5:detail==='low'?11:7));
+  cv.morphologyEx(mask,mask,cv.MORPH_CLOSE,close);cv.morphologyEx(mask,mask,cv.MORPH_OPEN,close);close.delete();
+  cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);cv.Canny(gray,edges,45,125,3,false);cv.bitwise_and(edges,mask,combined);
+  onProgress?.(55);
+  const candidates:[any,string][]=[[mask,'silhouette'],[combined,'internal']];
+  const adaptive=new cv.Mat();cv.adaptiveThreshold(gray,adaptive,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,detail==='low'?41:31,detail==='high'?4:7);candidates.push([adaptive,'adaptive']);
+  const extract=(m:any,kind:string)=>{const cs=new cv.MatVector(),hier=new cv.Mat(),lines:Line[]=[];let score=0;try{cv.findContours(m,cs,hier,kind==='silhouette'?cv.RETR_EXTERNAL:cv.RETR_LIST,cv.CHAIN_APPROX_NONE);for(let i=0;i<cs.size();i++){const c=cs.get(i),per=cv.arcLength(c,true),box=cv.boundingRect(c),area=Math.abs(cv.contourArea(c));const minPer=Math.max(12,Math.min(w,h)*.018);if(per<minPer||(box.width<4&&box.height<4)){c.delete();continue}if(box.width>.995*w&&box.height>.995*h){c.delete();continue}const approx=new cv.Mat();cv.approxPolyDP(c,approx,per*(detail==='low'?.010:detail==='high'?.004:.006),true);const pts:Point[]=[];for(let j=0;j<approx.rows;j++)pts.push({x:approx.data32S[j*2]/w-.5,y:approx.data32S[j*2+1]/h-.5});approx.delete();if(pts.length<3){c.delete();continue}const coverage=area/(w*h),span=Math.hypot(box.width,box.height)/Math.hypot(w,h),sizeScore=coverage>.985?.01:Math.min(1,Math.max(.08,coverage*5));score+=per/Math.hypot(w,h)*(.5+span)*sizeScore;lines.push({id:crypto.randomUUID(),points:pts,width:3.5});c.delete();if(lines.length>=220)break}}finally{cs.delete();hier.delete()}return{lines,score:score*(1-Math.min(.7,lines.length/260))}};
+  let best:Line[]=[];let bestScore=-Infinity;for(const [m,kind] of candidates){const e=extract(m,kind);const adjusted=e.score*(kind==='silhouette'?1.35:kind==='internal'?1.08:.55);if(e.lines.length&&adjusted>bestScore){best=e.lines;bestScore=adjusted}};
+  candidates.forEach(([m])=>m.delete?.());onProgress?.(95);return best;
+ }finally{src.delete();rgb.delete();lab.delete();blur.delete();distance.delete();mask.delete();gray.delete();edges.delete();combined.delete()}
 }
 
 function gradientMask(g:Uint8Array,w:number,h:number,multiplier:number){
