@@ -37,7 +37,7 @@ export function analyze(lines:Line[]){
  if(!lines.length)return warnings;
  const graph=buildSkeletonGraph(lines,.018);
  const degreeByLine=new Map<string,number>();
- graph.forEach(n=>n.lineIds.forEach(id=>degreeByLine.set(id,Math.max(degreeByLine.get(id)??0,n.degree)));
+ graph.forEach(n=>n.lineIds.forEach(id=>degreeByLine.set(id,Math.max(degreeByLine.get(id)??0,n.degree))));
 
  lines.forEach(l=>{
   if(l.points.length<2)return;
