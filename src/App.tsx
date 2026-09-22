@@ -211,17 +211,17 @@ if(created.length){
 processor.dispose();batchProcessor.current=null}
 function pauseBatch(){const x=batchProcessor.current;if(!x)return;if(batchPaused){x.resume();setBatchPaused(false)}else{x.pause();setBatchPaused(true)}}
 function cancelBatch(){batchProcessor.current?.cancel();setBatchPaused(false)}
-async function retryBatch(id:string){const job=batchJobs.find(j=>j.id===id),idx=job?.sourceIndex;if(!job||idx===undefined)return;const file=batchFilesRef.current[idx];if(!file)return;const processor=new BatchProcessor();setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'processing',progress:5,error:undefined}:j));try{const lines=await processor.process(file,p.settings.detail);setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'done',progress:100,lines}:j));openBatchResult({...job,status:'done',progress:100,lines})}catch(e){setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'error',error:e instanceof Error?e.message:String(e)}:j))}finally{processor.dispose()}}
+async function retryBatch(id:string){const job=batchJobs.find(j=>j.id===id),idx=job?.sourceIndex;if(!job||idx===undefined)return;const file=batchFilesRef.current[idx];if(!file)return;const processor=new BatchProcessor();setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'processing',progress:5,error:undefined}:j));try{const lines=await processor.process(file,p.settings.detail);const updated={...job,status:'done' as const,progress:100,lines};const project=await openBatchResult(updated);if(project)setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'done',progress:100,lines,projectId:project.id}:j));else setBatchJobs(js=>js.map(j=>j.id===id?updated:j))}catch(e){setBatchJobs(js=>js.map(j=>j.id===id?{...j,status:'error',error:e instanceof Error?e.message:String(e)}:j))}finally{processor.dispose()}}
 function removeBatch(id:string){setBatchJobs(js=>js.filter(j=>j.id!==id))}
-async function openBatchResult(job:BatchJob){
+async function openBatchResult(job:BatchJob):Promise<Project|undefined>{
   if(job.projectId){
     const saved=projects.find(x=>x.id===job.projectId);
-    if(saved){setP(normalize(saved));setBatchOpen(false);return}
+    if(saved){const next=normalize(saved);setP(next);setProductionPlan(next.productionPlan??null);setProductionSelected(0);setSelectedLine(null);setSelectedLines([]);setRelationLine(null);setSelectedNode(null);setSelectedStick(null);setBatchOpen(false);return}
     const stored=await listProjects();
     const found=stored.map(normalize).find(x=>x.id===job.projectId);
-    if(found){setP(found);setProjects(xs=>[found,...xs.filter(x=>x.id!==found.id)]);setBatchOpen(false);return}
+    if(found){setP(found);setProductionPlan(found.productionPlan??null);setProductionSelected(0);setProjects(xs=>[found,...xs.filter(x=>x.id!==found.id)]);setSelectedLine(null);setSelectedLines([]);setRelationLine(null);setSelectedNode(null);setSelectedStick(null);setBatchOpen(false);return}
   }
-  if(!job.lines||job.sourceIndex===undefined)return;
+  if(!job.lines||job.sourceIndex===undefined)return undefined;
   const file=batchFilesRef.current[job.sourceIndex];
   let imageData=job.thumbnail;
   if(file)imageData=await new Promise<string>(resolve=>{const fr=new FileReader();fr.onload=()=>resolve(String(fr.result));fr.readAsDataURL(file)});
@@ -229,7 +229,7 @@ async function openBatchResult(job:BatchJob){
   const project:Project={...blank(),id:crypto.randomUUID(),name:job.fileName.replace(/\.[^.]+$/,''),createdAt:now,updatedAt:now,originalName:job.fileName,imageData,lines:cloneLines(job.lines),connections:findConnectionCandidates(job.lines,p.settings.connectDistance),warnings:analyze(job.lines),sticks:recommendSticks(job.lines),settings:{...p.settings}};
   await saveProject(project);
   setProjects(xs=>[project,...xs.filter(x=>x.id!==project.id)]);
-  setP(project);setBatchOpen(false)
+  setP(project);setProductionPlan(project.productionPlan??null);setProductionSelected(0);setBatchOpen(false);return project
 }
 function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connections=findConnectionCandidates(q.lines,q.settings.connectDistance),warnings=[...analyze(q.lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))];return{...q,connections,warnings,sticks:recommendSticks(q.lines),updatedAt:Date.now()}})}
  function buildProductionPlan(project:Project):ProductionPlan{
