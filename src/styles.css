@@ -7,3 +7,71 @@
 .productionStep.selected{outline:2px solid rgba(109,93,252,.55);background:rgba(109,93,252,.08)}.productionStep button{font-size:10px;padding:3px 6px}.productionStep .row{grid-column:1/-1;margin-top:3px}
 .productionStep.selected{box-shadow:inset 3px 0 0 #6d5dfc}.productionStep{cursor:pointer}.productionStep:hover{background:rgba(109,93,252,.06)}
 .productionControls{margin:6px 0}.productionControls button{flex:1;font-size:10px}.productionStep.selected{position:relative}
+
+/* Mobile V1.1: bottom-sheet inspector instead of hiding the control panel. */
+@media(max-width:850px){
+  .app{height:100dvh;min-height:0}
+  header{height:52px;padding:0 10px;gap:8px;position:relative;z-index:60}
+  .brand{min-width:auto;gap:7px}.logo{width:28px;height:28px}.brand b{font-size:13px}
+  .topActions{gap:4px}.topActions button{padding:6px 7px;font-size:11px}
+  main{grid-template-columns:54px 1fr;min-height:0;position:relative}
+  .toolbar{padding:7px 5px;gap:4px;z-index:40}
+  .tool{height:48px;border-radius:7px}.tool svg{width:18px}.tool small{font-size:9px}
+  .workspace{min-width:0}
+  .canvasWrap{min-height:0}
+  .canvasWrap canvas{touch-action:none}
+  .status{height:28px;padding:0 8px;gap:8px;font-size:10px;overflow:hidden;white-space:nowrap}
+  .status>*{flex-shrink:0}
+  .panel{
+    display:block;
+    position:fixed;
+    left:0;
+    right:0;
+    bottom:0;
+    width:100%;
+    height:min(68dvh,620px);
+    max-height:68dvh;
+    z-index:55;
+    background:#17191d;
+    border:1px solid #343943;
+    border-bottom:0;
+    border-radius:16px 16px 0 0;
+    box-shadow:0 -14px 40px rgba(0,0,0,.38);
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .panel:before{
+    content:"";
+    display:block;
+    width:42px;
+    height:4px;
+    border-radius:99px;
+    background:#6b707a;
+    margin:8px auto 2px;
+    opacity:.7;
+  }
+  .tabs{position:sticky;top:0;z-index:2;background:#17191d;padding:10px 13px}
+  .panel section{padding:12px}
+  .panel input,.panel select{font-size:16px;min-height:38px}
+  .panel button{min-height:36px}
+  .panel .row{flex-wrap:wrap}
+  .panel .row button{flex:1;min-width:82px}
+  .editorActions{grid-template-columns:1fr 1fr}
+  .menuPopup{position:fixed;top:52px;left:8px;right:8px;max-width:none}
+  .player{bottom:calc(68dvh + 48px);z-index:70;white-space:nowrap}
+  footer{display:none}
+  .imageBadge{top:8px;left:8px}
+  .productionStep{grid-template-columns:1fr auto}
+  .productionControls button{min-width:0}
+}
+@media(max-width:520px){
+  .panel{height:72dvh;max-height:72dvh}
+  .panel .tabs{gap:12px;overflow-x:auto}
+  .panel .tabs span{white-space:nowrap}
+  .brand small{display:none}
+  .topActions button span{display:none}
+  .tool{height:45px}
+  .tool small{font-size:8px}
+  .metric{grid-template-columns:repeat(2,1fr)}
+}
