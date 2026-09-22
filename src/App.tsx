@@ -65,9 +65,10 @@ export default function App(){
       x.save();x.globalAlpha=.22;x.strokeStyle=dark?'#60a5fa':'#2563eb';x.lineWidth=Math.max(7,l.width*3);x.lineCap='round';x.beginPath();l.points.forEach((q,i)=>i?x.lineTo(q.x*sx,q.y*sy):x.moveTo(q.x*sx,q.y*sy));x.stroke();x.restore()
     }
   });  // Draw explicit A → B conflict relations between constraints and their geometry.
-  const drawArrow=(ax:number,ay:number,bx:number,by:number,color:string)=>{
+  const drawArrow=(ax:number,ay:number,bx:number,by:number,color:string,hoverId?:string)=>{
     const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
-    x.save();x.strokeStyle=color;x.fillStyle=color;x.lineWidth=diagnosticHover===d.id?3:2;x.globalAlpha=diagnosticHover===d.id?.95:1;x.setLineDash([5,4]);
+    const hot=hoverId?diagnosticHover===hoverId:false;
+    x.save();x.strokeStyle=color;x.fillStyle=color;x.lineWidth=hot?3:2;x.globalAlpha=hot?.95:1;x.setLineDash([5,4]);
     x.beginPath();x.moveTo(ax,ay);x.lineTo(bx-ux*9,by-uy*9);x.stroke();x.setLineDash([]);
     const px=-uy,py=ux;x.beginPath();x.moveTo(bx,by);x.lineTo(bx-ux*9+px*4,by-uy*9+py*4);x.lineTo(bx-ux*9-px*4,by-uy*9-py*4);x.closePath();x.fill();x.restore();
   };
@@ -82,11 +83,21 @@ export default function App(){
       const other=rc?.referenceLineId===c.lineId?p.lines.find(v=>v.id===rc?.lineId):rc?.lineId===c.referenceLineId?p.lines.find(v=>v.id===rc?.referenceLineId):rc?p.lines.find(v=>v.id===rc.lineId):undefined;
       if(!other)return;
       const q=other.points[0],r=other.points.at(-1)!;
-      drawArrow(ox,oy,(q.x+r.x)*.5*sx,(q.y+r.y)*.5*sy,color);
+      drawArrow(ox,oy,(q.x+r.x)*.5*sx,(q.y+r.y)*.5*sy,color,d.id);
     });
     const gx=ox,gy=oy-28;
     x.save();x.fillStyle=dark?'rgba(16,18,22,.9)':'rgba(255,255,255,.94)';x.beginPath();x.roundRect(gx-38,gy-9,76,18,5);x.fill();
-    x.fillStyle=color;x.font='700 9px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillText((constraintLabel(c)+' → '+d.conflictingIds.filter(id=>id!==d.id).slice(0,1).map(id=>{const rc=(p.constraints??[]).find(v=>v.id===id);return rc?constraintLabel(rc):'geometry'}).join('')||constraintLabel(c)+' → geometry'),gx,gy);x.restore();
+    x.fillStyle=color;x.font='700 9px system-ui';x.textAlign='center';x.textBaseline='middle';
+    const chainLabel=[d.id,...d.conflictingIds.filter(id=>id!==d.id).slice(0,2)].map(id=>{
+      const rc=(p.constraints??[]).find(v=>v.id===id);
+      return rc?constraintLabel(rc)+' '+rc.type:'geometry';
+    });
+    const labelText=chainLabel.length>1?chainLabel.join(' → '):constraintLabel(c)+' '+c.type+' → geometry';
+    const maxChars=32,shortLabel=labelText.length>maxChars?labelText.slice(0,maxChars-1)+'…':labelText;
+    const tw=x.measureText(shortLabel).width+14;
+    x.fillStyle=dark?'rgba(16,18,22,.92)':'rgba(255,255,255,.96)';
+    x.beginPath();x.roundRect(gx-tw/2,gy-10,tw,20,5);x.fill();
+    x.fillStyle=color;x.fillText(shortLabel,gx,gy);x.restore();
   });
   const relationCad=p.lines.find(l=>l.id===relationLine);
   if(relationCad&&relationCad.points.length>1){const ra=relationCad.points[0],rb=relationCad.points.at(-1)!;x.save();x.strokeStyle=dark?'#60a5fa':'#2563eb';x.lineWidth=2.5;x.setLineDash([7,5]);x.beginPath();x.moveTo(ra.x*sx,ra.y*sy);x.lineTo(rb.x*sx,rb.y*sy);x.stroke();x.setLineDash([]);x.fillStyle=dark?'#60a5fa':'#2563eb';x.beginPath();x.arc(ra.x*sx,ra.y*sy,5,0,Math.PI*2);x.fill();x.restore()}
