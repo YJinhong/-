@@ -29,8 +29,8 @@
     right:0;
     bottom:0;
     width:100%;
-    height:min(68dvh,620px);
-    max-height:68dvh;
+    height:min(48dvh,520px);
+    max-height:48dvh;
     z-index:55;
     background:#17191d;
     border:1px solid #343943;
@@ -52,21 +52,21 @@
     opacity:.7;
   }
   .tabs{position:sticky;top:0;z-index:2;background:#17191d;padding:10px 13px}
-  .panel section{padding:12px}
+  .panel section{padding:9px 12px}
   .panel input,.panel select{font-size:16px;min-height:38px}
   .panel button{min-height:36px}
   .panel .row{flex-wrap:wrap}
   .panel .row button{flex:1;min-width:82px}
   .editorActions{grid-template-columns:1fr 1fr}
   .menuPopup{position:fixed;top:52px;left:8px;right:8px;max-width:none}
-  .player{bottom:calc(68dvh + 48px);z-index:70;white-space:nowrap}
+  .player{bottom:calc(48dvh + 48px);z-index:70;white-space:nowrap}
   footer{display:none}
   .imageBadge{top:8px;left:8px}
   .productionStep{grid-template-columns:1fr auto}
   .productionControls button{min-width:0}
 }
 @media(max-width:520px){
-  .panel{height:72dvh;max-height:72dvh}
+  .panel{height:50dvh;max-height:50dvh}
   .panel .tabs{gap:12px;overflow-x:auto}
   .panel .tabs span{white-space:nowrap}
   .brand small{display:none}
@@ -74,4 +74,22 @@
   .tool{height:45px}
   .tool small{font-size:8px}
   .metric{grid-template-columns:repeat(2,1fr)}
+}
+
+/* Mobile portrait V1.2: keep the canvas visible and let the inspector scroll instead of covering most of it. */
+@media(max-width:850px) and (orientation:portrait){
+  header{height:50px;padding:0 8px}
+  main{grid-template-columns:48px 1fr}
+  .toolbar{padding:6px 4px}
+  .tool{height:44px}
+  .canvasWrap{min-height:180px}
+  .panel{height:46dvh;max-height:46dvh;border-radius:14px 14px 0 0}
+  .panel section{padding:8px 10px}
+  .panel h3{margin-bottom:7px}
+  .panel label{margin:7px 0}
+  .panel .row{margin:7px 0;gap:5px}
+  .panel input,.panel select{min-height:36px}
+  .panel button{min-height:34px}
+  .tabs{padding:8px 10px}
+  .player{bottom:calc(46dvh + 42px)}
 }
