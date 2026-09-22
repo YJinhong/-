@@ -29,7 +29,7 @@ function fallbackProductionPlan(p:Project):ProductionPlan{
 function effectiveProductionPlan(p:Project){return p.productionPlan??fallbackProductionPlan(p)}
 export async function planPdfBytes(p:Project){
  const doc=await PDFDocument.create();
- const font=await doc.embedFont(StandardFonts.Helvetica);\n const plan=effectiveProductionPlan(p);
+ const font=await doc.embedFont(StandardFonts.Helvetica); const plan=effectiveProductionPlan(p);
  const pageW=595,pageH=842,margin=36;
  const page=doc.addPage([pageW,pageH]);
  page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:margin,y:pageH-margin,size:20,font,color:rgb(.08,.08,.1)});
