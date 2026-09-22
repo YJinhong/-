@@ -100,7 +100,8 @@ export function recommendSticks(lines:Line[]):SupportStick[]{
    const endBalance=Math.min(s,total-s)/(total||1);
    const curvaturePenalty=Math.min(1,curvature/110);
    const widthBonus=clamp((line.width-2.5)/2.5,0,1);
-   const degreeBonus=(degree.get(line.id)??1)>=3?.12:(degree.get(line.id)??1)===1?.08:0;
+   const lineDegree=degree.get(line.id)??1;
+   const degreeBonus=lineDegree>=3 ? 0.12 : lineDegree===1 ? 0.08 : 0;
    const score=clamp(
     42+
     34*clamp(len/.8,0,1)+
