@@ -18,8 +18,13 @@ export function buildSkeletonGraph(lines:Line[],radius=.018){
 }
 export function rebuildGraph(lines:Line[],radius=.018){return buildSkeletonGraph(lines,radius)}
 export function graphEdges(lines:Line[],radius=.018):GraphEdge[]{
- const nodes=buildSkeletonGraph(lines,radius),nodeFor=(p:Point)=>{let best=0,bd=Infinity;nodes.forEach((n,i)=>{const z=d(n.point,p);if(z<bd){bd=z;best=i}});return best};
- return lines.map(l=>{const[a,b]=ends(l);return{lineId:l.id,a:nodes[nodeFor(a)].id,b:nodes[nodeFor(b)].id}});
+ const nodes:{id:string;point:Point}[]=[];
+ const nodeFor=(p:Point)=>{
+  const i=nodes.findIndex(n=>d(n.point,p)<=radius);
+  if(i>=0)return nodes[i].id;
+  const id=crypto.randomUUID();nodes.push({id,point:{...p}});return id;
+ };
+ return lines.map(l=>{const[a,b]=ends(l);return{lineId:l.id,a:nodeFor(a),b:nodeFor(b)}});
 }
 function reverse(l:Line):Line{return{...l,points:[...l.points].reverse()}}
 function eulerFromEdges(lines:Line[],edges:GraphEdge[],start:string):Line[]{
