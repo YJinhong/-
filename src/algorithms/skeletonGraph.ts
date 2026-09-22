@@ -19,22 +19,36 @@ export function buildSkeletonGraph(lines:Line[],radius=.018){
 export function rebuildGraph(lines:Line[],radius=.018){return buildSkeletonGraph(lines,radius)}
 export function graphEdges(lines:Line[],radius=.018):GraphEdge[]{
  const nodes=buildSkeletonGraph(lines,radius),nodeFor=(p:Point)=>{let best=0,bd=Infinity;nodes.forEach((n,i)=>{const z=d(n.point,p);if(z<bd){bd=z;best=i}});return best};
- return lines.map(l=>{const [a,b]=ends(l);return{lineId:l.id,a:nodes[nodeFor(a)].id,b:nodes[nodeFor(b)].id}});
+ return lines.map(l=>{const[a,b]=ends(l);return{lineId:l.id,a:nodes[nodeFor(a)].id,b:nodes[nodeFor(b)].id}});
 }
 function reverse(l:Line):Line{return{...l,points:[...l.points].reverse()}}
-function componentEdges(lines:Line[],radius=.018){
- const edges=graphEdges(lines,radius),adj=new Map<string,GraphEdge[]>();
- for(const e of edges){(adj.get(e.a)??(adj.set(e.a,[]),adj.get(e.a)!)).push(e);(adj.get(e.b)??(adj.set(e.b,[]),adj.get(e.b)!)).push(e)}
- const seen=new Set<string>(),out:GraphEdge[][]=[];
- for(const e of edges)if(!seen.has(e.lineId)){const comp:GraphEdge[]=[];const q=[e.a,e.b];seen.add(e.lineId);while(q.length){const n=q.pop()!;for(const z of adj.get(n)??[])if(!seen.has(z.lineId)){seen.add(z.lineId);comp.push(z);q.push(z.a,z.b)}}out.push([e,...comp])}
- return out;
-}
 function eulerFromEdges(lines:Line[],edges:GraphEdge[],start:string):Line[]{
  const byId=new Map(lines.map(l=>[l.id,l])),adj=new Map<string,{edge:GraphEdge;other:string}[]>();
- for(const e of edges){(adj.get(e.a)??(adj.set(e.a,[]),adj.get(e.a)!)).push({edge:e,other:e.b});(adj.get(e.b)??(adj.set(e.b,[]),adj.get(e.b)!)).push({edge:e,other:e.a})}
- const used=new Set<string>(),stack:{node:string;edge:GraphEdge|null}[]=[{node:start,edge:null}],circuit:{edge:GraphEdge;from:string;to:string}[]=[];
- while(stack.length){const top=stack.at(-1)!;const next=(adj.get(top.node)??[]).find(z=>!used.has(z.edge.lineId));if(next){used.add(next.edge.lineId);stack.push({node:next.other,edge:next.edge})}else{const done=stack.pop()!;if(done.edge)circuit.push({edge:done.edge,from:done.node,to:top.node})}}
- const ordered:Line[]=[];for(let i=circuit.length-1;i>=0;i--){const z=circuit[i],l=byId.get(z.edge.lineId)!;const oriented=z.edge.a===z.from&&z.edge.b===z.to?l:reverse(l);ordered.push(oriented)}return ordered;
+ for(const e of edges){
+  (adj.get(e.a)??(adj.set(e.a,[]),adj.get(e.a)!)).push({edge:e,other:e.b});
+  (adj.get(e.b)??(adj.set(e.b,[]),adj.get(e.b)!)).push({edge:e,other:e.a});
+ }
+ const used=new Set<string>();
+ const stack:{node:string;via:{edge:GraphEdge;from:string;to:string}|null}[]=[{node:start,via:null}];
+ const circuit:{edge:GraphEdge;from:string;to:string}[]=[];
+ while(stack.length){
+  const top=stack.at(-1)!;
+  const next=(adj.get(top.node)??[]).find(z=>!used.has(z.edge.lineId));
+  if(next){
+   used.add(next.edge.lineId);
+   stack.push({node:next.other,via:{edge:next.edge,from:top.node,to:next.other}});
+  }else{
+   const done=stack.pop()!;
+   if(done.via)circuit.push(done.via);
+  }
+ }
+ const ordered:Line[]=[];
+ for(let i=circuit.length-1;i>=0;i--){
+  const z=circuit[i],l=byId.get(z.edge.lineId);
+  if(!l)continue;
+  ordered.push(z.edge.a===z.from&&z.edge.b===z.to?l:reverse(l));
+ }
+ return ordered;
 }
 export function eulerTrail(lines:Line[],radius=.018):Line[]{
  if(!lines.length)return[];
@@ -47,12 +61,11 @@ export function trailDecomposition(lines:Line[],radius=.018):Line[][]{
  if(!lines.length)return[];
  const remaining=new Map(lines.map(l=>[l.id,l])),trails:Line[][]=[];
  while(remaining.size){
-  const batch=[...remaining.values()],nodes=buildSkeletonGraph(batch,radius),odd=nodes.filter(n=>n.degree%2===1);
-  const start=(odd[0]?.id??nodes[0]?.id);if(!start)break;
-  const edges=graphEdges(batch,radius),trail=eulerFromEdges(batch,edges,start);
+  const batch=[...remaining.values()],nodes=buildSkeletonGraph(batch,radius),odd=nodes.filter(n=>n.degree%2===1),start=odd[0]?.id??nodes[0]?.id;
+  if(!start)break;
+  const trail=eulerFromEdges(batch,graphEdges(batch,radius),start);
   if(!trail.length)break;
-  trails.push(trail);
-  trail.forEach(l=>remaining.delete(l.id));
+  trails.push(trail);trail.forEach(l=>remaining.delete(l.id));
  }
  return trails;
 }
