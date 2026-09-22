@@ -52,6 +52,11 @@ function hitNode(pt:{x:number;y:number}){let best:{lineId:string;index:number}|n
      const ids=new Set(gn.lineIds);
      setProject(prev=>{if(!prev)return prev;const lines=prev.lines.map(l=>{if(!ids.has(l.id))return l;const points=l.points.map(q=>({...q}));if(Math.hypot(points[0].x-gn.point.x,points[0].y-gn.point.y)<=.035){points[0].x+=dx;points[0].y+=dy}const z=points.length-1;if(Math.hypot(points[z].x-gn.point.x,points[z].y-gn.point.y)<=.035){points[z].x+=dx;points[z].y+=dy}return {...l,points}});return {...prev,lines,updatedAt:Date.now()}});
      setGraphDragLast(pt);
+     const graphNow=rebuildGraph(lines);
+     const connectionsNow=findConnectionCandidates(lines,prev.settings.connectDistance);
+     const warningsNow=analyze(lines);
+     const sticksNow=recommendSticks(lines);
+     setProject(p=>p?{...p,lines,connections:connectionsNow,warnings:warningsNow,sticks:sticksNow,updatedAt:Date.now()}:p);
    }
    return;
  }
