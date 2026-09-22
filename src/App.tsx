@@ -51,6 +51,14 @@ function hitNode(pt:{x:number;y:number}){let best:{lineId:string;index:number}|n
      const dx=pt.x-graphDragLast.x,dy=pt.y-graphDragLast.y;
      const ids=new Set(gn.lineIds);
      setProject(prev=>{if(!prev)return prev;const lines=prev.lines.map(l=>{if(!ids.has(l.id))return l;const points=l.points.map(q=>({...q}));if(Math.hypot(points[0].x-gn.point.x,points[0].y-gn.point.y)<=.035){points[0].x+=dx;points[0].y+=dy}const z=points.length-1;if(Math.hypot(points[z].x-gn.point.x,points[z].y-gn.point.y)<=.035){points[z].x+=dx;points[z].y+=dy}return {...l,points}});return {...prev,lines,updatedAt:Date.now()}});
+     const snapRadius=.025;
+     const currentGraph=rebuildGraph(lines);
+     const moved=currentGraph.find(n=>n.id===selectedGraphNode);
+     if(moved){
+       const target=currentGraph.find(n=>n.id!==selectedGraphNode&&Math.hypot(n.point.x-moved.point.x,n.point.y-moved.point.y)<=snapRadius);
+       if(target){
+         const dx=target.point.x-moved.point.x,dy=target.point.y-moved.point.y;
+         setProject(p=>{if(!p)return p;const merged=p.lines.map(l=>{if(!moved.lineIds.includes(l.id))return l;const points=l.points.map(q=>({...q}));if(Math.hypot(points[0].x-moved.point.x,points[0].y-moved.point.y)<=.04){points[0].x+=dx;points[0].y+=dy}const z=points.length-1;if(Math.hypot(points[z].x-moved.point.x,points[z].y-moved.point.y)<=.04){points[z].x+=dx;points[z].y+=dy}return {...l,points}});return {...p,lines:merged,connections:findConnectionCandidates(merged,p.settings.connectDistance),warnings:analyze(merged),sticks:recommendSticks(merged),updatedAt:Date.now()}});
      setGraphDragLast(pt);
      const graphNow=rebuildGraph(lines);
      const connectionsNow=findConnectionCandidates(lines,prev.settings.connectDistance);
