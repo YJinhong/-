@@ -434,7 +434,7 @@ function updateStick(id:string,patch:Partial<NonNullable<Project['sticks']>[numb
    const diagnosticId=diagnosticHit(pt);
    if(diagnosticId){locateConstraint(diagnosticId);setDiagnosticHover(diagnosticId);return}
    const sid=hitStick(pt);if(sid){setSelectedStick(sid);setStickDragging(true);setDragStart(pt);setSelectedGraphNode(null);dragHistory.current=snapshot('Move support stick',p.lines,p.sticks,p.productionPlan,p.constraints,p.connections);return}
-   const gn=graphNodeAt(pt);if(gn){setSelectedGraphNode(gn.id);setSelectedLine(gn.lineIds[0]??null);setSelectedLines(gn.lineIds);setSelectedNode(null);setGraphDragging(true);setGraphDragLast(pt);return}
+   const gn=graphNodeAt(pt);if(gn){setSelectedGraphNode(gn.id);setSelectedLine(gn.lineIds[0]??null);setSelectedLines(gn.lineIds);setSelectedNode(null);setGraphDragging(true);setGraphDragLast(pt);dragHistory.current=snapshot('Move graph node',p.lines,p.sticks,p.productionPlan,p.constraints,p.connections);return}
    setSelectedGraphNode(null);const node=hitNode(pt);
    if(node){setSelectedNode(node);setSelectedLine(node.lineId);setSelectedLines([node.lineId]);setNodeDragging(true);setDragStart(pt);dragHistory.current=snapshot('Move node',p.lines,p.sticks,p.productionPlan,p.constraints,p.connections);return}
    const id=hitLine(pt);
