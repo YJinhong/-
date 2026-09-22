@@ -179,7 +179,7 @@ export async function planPdfBytes(p:Project){
 }
 export async function planPdf(p:Project){
  const bytes=await planPdfBytes(p);
- saveAs(new Blob([bytes],{type:'application/pdf'}),p.name+'-plan.pdf')
+ saveAs(new Blob([bytes as unknown as BlobPart],{type:'application/pdf'}),p.name+'-plan.pdf')
 }
 export function projectJson(p:Project){return JSON.stringify({version:1,exportedAt:new Date().toISOString(),project:p},null,2)}
 export async function zipProjects(ps:Project[]){
