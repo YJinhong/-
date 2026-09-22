@@ -59,7 +59,8 @@ async function decodeFallback(file:File):Promise<ImageBitmap|HTMLImageElement>{
 async function localTrace(file:File,detail:'low'|'balanced'|'high'):Promise<Line[]>{
  const img=await decodeFallback(file),max=1000,scale=Math.min(1,max/Math.max(img.width,img.height)),
  w=Math.max(8,Math.round(img.width*scale)),h=Math.max(8,Math.round(img.height*scale)),
- c=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):document.createElement('canvas');
+ c=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):typeof document!=='undefined'?document.createElement('canvas'):null;
+ if(!c)throw new Error('OFFSCREEN_CANVAS_UNAVAILABLE');
  c.width=w;c.height=h;
  const ctx=c.getContext('2d',{willReadFrequently:true})!;ctx.drawImage(img,0,0,w,h);
  if(img instanceof ImageBitmap)img.close();
@@ -73,7 +74,7 @@ async function localTrace(file:File,detail:'low'|'balanced'|'high'):Promise<Line
 
 export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='balanced'):Promise<Line[]>{
  let local:Line[]=[];
- try{local=await localTrace(file,detail);if(local.length)return local}catch{}
+ try{local=await localTrace(file,detail);if(local.length)return local}catch(e){const code=e instanceof Error?e.message:String(e);if(code==='IMAGE_DECODE_FAILED'||code==='IMAGE_TOO_LARGE'||code==='OFFSCREEN_CANVAS_UNAVAILABLE')throw e}
  try{const preprocessed=await opencvSugarMaskFile(file,detail);const traced=await potraceVectorize(preprocessed,detail);if(traced.length)return traced}catch{}
  try{const traced=await potraceVectorize(file,detail);if(traced.length)return traced}catch{}
  throw new Error('NO_LINES_DETECTED')
