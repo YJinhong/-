@@ -39,7 +39,7 @@ function mergeComponent(lines:Line[],connections:ConnectionCandidate[]):Line[]{
   if(startLinks.start&&!startLinks.end)startEnd='end';
 
   let currentId=startId;
-  let entry:startEnd extends Endpoint?Endpoint:Endpoint=startEnd;
+  let entry:Endpoint=startEnd;
   let merged:Line|undefined;
   const visited=new Set<string>();
 
