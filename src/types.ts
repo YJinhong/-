@@ -1,1 +1,9 @@
-export type Point={x:number;y:number};export type Line={id:string;points:Point[];width:number;closed?:boolean};export type StructuralWarning={id:string;severity:'low'|'medium'|'high';message:string;lineIds:string[]};export type SupportStick={id:string;x:number;y:number;length:number;angle:number;score:number;kind:'recommended'|'optional'|'avoid'};export type Project={id:string;name:string;createdAt:number;updatedAt:number;imageData?:string;lines:Line[];widthMm:number;heightMm:number;settings:OptimizationSettings;warnings:StructuralWarning[];sticks:SupportStick[];history:Version[]};export type OptimizationSettings={detail:'low'|'medium'|'high';minWidthMm:number;connectDistance:number;simplifyTolerance:number};export type Version={id:string;createdAt:number;label:string;lines:Line[]};export type BatchJob={id:string;file:File;status:'queued'|'processing'|'done'|'error';progress:number;projectId?:string;error?:string};
+export type Point={x:number;y:number};
+export type Line={id:string;points:Point[];width:number;closed?:boolean};
+export type StructuralWarning={id:string;severity:'low'|'medium'|'high';message:string;lineIds:string[]};
+export type SupportStick={id:string;x:number;y:number;length:number;angle:number;score:number;kind:'recommended'|'optional'|'avoid'};
+export type OptimizationSettings={detail:'low'|'balanced'|'high';minWidthMm:number;connectDistance:number;simplifyTolerance:number};
+export type Version={id:string;createdAt:number;label:string;lines:Line[]};
+export type Project={id:string;name:string;createdAt:number;updatedAt:number;imageData?:string;originalName?:string;lines:Line[];widthMm:number;heightMm:number;settings:OptimizationSettings;warnings:StructuralWarning[];sticks:SupportStick[];history:Version[]};
+export type BatchJob={id:string;fileName:string;size:number;status:'queued'|'processing'|'done'|'error'|'paused';progress:number;projectId?:string;error?:string};
+export type PipelineResult={lines:Line[];connections:{a:string;b:string}[];removed:number;warnings:StructuralWarning[];sticks:SupportStick[]};
