@@ -1,7 +1,7 @@
 import type{Line,Point}from'../types';
 export type GraphNode={id:string;point:Point;degree:number;lineIds:string[]};
 export type GraphEdge={lineId:string;a:string;b:string};
-export type PathResult={order:Line[];penLifts:number;length:number};
+export type PathResult={order:Line[];penLifts:number;length:number;trails?:Line[][]};
 
 const d=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.y-b.y);
 const ends=(l:Line)=>[l.points[0],l.points.at(-1)!] as const;
@@ -18,35 +18,48 @@ export function buildSkeletonGraph(lines:Line[],radius=.018){
 }
 export function rebuildGraph(lines:Line[],radius=.018){return buildSkeletonGraph(lines,radius)}
 export function graphEdges(lines:Line[],radius=.018):GraphEdge[]{
- const nodes=buildSkeletonGraph(lines,radius),nodeFor=(p:Point)=>nodes.reduce((best,n,i)=>d(n.point,p)<d(n.point,nodes[best]?.point??{x:99,y:99})?i:best,0);
+ const nodes=buildSkeletonGraph(lines,radius),nodeFor=(p:Point)=>{let best=0,bd=Infinity;nodes.forEach((n,i)=>{const z=d(n.point,p);if(z<bd){bd=z;best=i}});return best};
  return lines.map(l=>{const [a,b]=ends(l);return{lineId:l.id,a:nodes[nodeFor(a)].id,b:nodes[nodeFor(b)].id}});
 }
 function reverse(l:Line):Line{return{...l,points:[...l.points].reverse()}}
-function connectedStart(lines:Line[],tail:Point){let best=-1,bestD=Infinity,rev=false;for(let i=0;i<lines.length;i++){const [a,b]=ends(lines[i]),da=d(a,tail),db=d(b,tail);if(da<bestD){best=i;bestD=da;rev=false}if(db<bestD){best=i;bestD=db;rev=true}}return{index:best,reverse:rev,distance:bestD}}
-export function eulerTrail(lines:Line[]):Line[]{
- if(!lines.length)return[];
- const unused=[...lines],out:Line[]=[];
- let current=unused.shift()!;
- out.push(current);
- while(unused.length){
-  const pick=connectedStart(unused,current.points.at(-1)!);
-  if(pick.index<0)break;
-  const next=unused.splice(pick.index,1)[0];
-  current=pick.reverse?reverse(next):next;
-  out.push(current);
- }
+function componentEdges(lines:Line[],radius=.018){
+ const edges=graphEdges(lines,radius),adj=new Map<string,GraphEdge[]>();
+ for(const e of edges){(adj.get(e.a)??(adj.set(e.a,[]),adj.get(e.a)!)).push(e);(adj.get(e.b)??(adj.set(e.b,[]),adj.get(e.b)!)).push(e)}
+ const seen=new Set<string>(),out:GraphEdge[][]=[];
+ for(const e of edges)if(!seen.has(e.lineId)){const comp:GraphEdge[]=[];const q=[e.a,e.b];seen.add(e.lineId);while(q.length){const n=q.pop()!;for(const z of adj.get(n)??[])if(!seen.has(z.lineId)){seen.add(z.lineId);comp.push(z);q.push(z.a,z.b)}}out.push([e,...comp])}
  return out;
 }
-export function minimumPenLiftPath(lines:Line[]):PathResult{
- if(!lines.length)return{order:[],penLifts:0,length:0};
- const components:Line[][]=[];const remaining=[...lines];const threshold=.08;
- while(remaining.length){
-  const seed=remaining.shift()!;const comp=[seed];let expanded=true;
-  while(expanded){expanded=false;for(let i=remaining.length-1;i>=0;i--){const l=remaining[i];const touches=comp.some(c=>ends(c).some(a=>ends(l).some(b=>d(a,b)<=threshold)));if(touches){comp.push(l);remaining.splice(i,1);expanded=true}}}
-  components.push(comp);
- }
- const order=components.flatMap(c=>eulerTrail(c));
- return{order,penLifts:Math.max(0,components.length-1),length:totalPathLength(order)};
+function eulerFromEdges(lines:Line[],edges:GraphEdge[],start:string):Line[]{
+ const byId=new Map(lines.map(l=>[l.id,l])),adj=new Map<string,{edge:GraphEdge;other:string}[]>();
+ for(const e of edges){(adj.get(e.a)??(adj.set(e.a,[]),adj.get(e.a)!)).push({edge:e,other:e.b});(adj.get(e.b)??(adj.set(e.b,[]),adj.get(e.b)!)).push({edge:e,other:e.a})}
+ const used=new Set<string>(),stack:{node:string;edge:GraphEdge|null}[]=[{node:start,edge:null}],circuit:{edge:GraphEdge;from:string;to:string}[]=[];
+ while(stack.length){const top=stack.at(-1)!;const next=(adj.get(top.node)??[]).find(z=>!used.has(z.edge.lineId));if(next){used.add(next.edge.lineId);stack.push({node:next.other,edge:next.edge})}else{const done=stack.pop()!;if(done.edge)circuit.push({edge:done.edge,from:done.node,to:top.node})}}
+ const ordered:Line[]=[];for(let i=circuit.length-1;i>=0;i--){const z=circuit[i],l=byId.get(z.edge.lineId)!;const oriented=z.edge.a===z.from&&z.edge.b===z.to?l:reverse(l);ordered.push(oriented)}return ordered;
 }
-export function penLifts(order:Line[],threshold=.08){let lifts=0;for(let i=1;i<order.length;i++){if(d(order[i-1].points.at(-1)!,order[i].points[0]!)>threshold)lifts++}return lifts}
+export function eulerTrail(lines:Line[],radius=.018):Line[]{
+ if(!lines.length)return[];
+ const edges=graphEdges(lines,radius),nodes=buildSkeletonGraph(lines,radius),odd=nodes.filter(n=>n.degree%2===1);
+ if(odd.length!==0&&odd.length!==2)return[];
+ const start=odd[0]?.id??nodes[0]?.id;
+ return start?eulerFromEdges(lines,edges,start):[];
+}
+export function trailDecomposition(lines:Line[],radius=.018):Line[][]{
+ if(!lines.length)return[];
+ const remaining=new Map(lines.map(l=>[l.id,l])),trails:Line[][]=[];
+ while(remaining.size){
+  const batch=[...remaining.values()],nodes=buildSkeletonGraph(batch,radius),odd=nodes.filter(n=>n.degree%2===1);
+  const start=(odd[0]?.id??nodes[0]?.id);if(!start)break;
+  const edges=graphEdges(batch,radius),trail=eulerFromEdges(batch,edges,start);
+  if(!trail.length)break;
+  trails.push(trail);
+  trail.forEach(l=>remaining.delete(l.id));
+ }
+ return trails;
+}
+export function minimumPenLiftPath(lines:Line[],radius=.018):PathResult{
+ if(!lines.length)return{order:[],penLifts:0,length:0,trails:[]};
+ const trails=trailDecomposition(lines,radius);
+ return{order:trails.flat(),penLifts:Math.max(0,trails.length-1),length:totalPathLength(trails.flat()),trails};
+}
+export function penLifts(order:Line[],threshold=.08){let lifts=0;for(let i=1;i<order.length;i++)if(d(order[i-1].points.at(-1)!,order[i].points[0]!)>threshold)lifts++;return lifts}
 export function totalPathLength(lines:Line[]){return lines.reduce((s,l)=>s+l.points.slice(1).reduce((n,p,i)=>n+d(l.points[i],p),0),0)}
