@@ -84,6 +84,7 @@ export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='ba
   const smart=await smartContours(file,detail,onProgress);
   if(smart.length>0)return smart;
  }catch(e){
+  if(e instanceof Error&&e.message==='BATCH_CANCELLED')throw e;
   console.warn('Smart contour pipeline unavailable, using local fallback',e);
  }
 
