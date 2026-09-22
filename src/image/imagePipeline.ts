@@ -61,8 +61,8 @@ async function smartContours(file:File,detail:'low'|'balanced'|'high'):Promise<L
  try{
   cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
   cv.threshold(gray,bin,250,255,cv.THRESH_BINARY_INV);
-  cv.findContours(bin,cs,hier,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_NONE);
-  const minArea=Math.max(80,result.width*result.height*(detail==='low'?.0008:.00035));
+  cv.findContours(bin,cs,hier,cv.RETR_LIST,cv.CHAIN_APPROX_NONE);
+  const minArea=Math.max(12,result.width*result.height*(detail==='low'?.00005:detail==='high'?.00002:.000035));
   for(let i=0;i<cs.size();i++){
    const c=cs.get(i),area=Math.abs(cv.contourArea(c)),per=cv.arcLength(c,true);
    if(area<minArea||per<30){c.delete();continue}
