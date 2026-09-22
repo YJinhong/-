@@ -45,30 +45,12 @@ export default function App(){
 function graphNodeAt(pt:{x:number;y:number}){const nodes=rebuildGraph(p.lines);let best:any=null,bd=.035;for(const n of nodes){const d=Math.hypot(n.point.x-pt.x,n.point.y-pt.y);if(d<bd){bd=d;best=n}}return best}
 function hitNode(pt:{x:number;y:number}){let best:{lineId:string;index:number}|null=null,bd=.028;for(const l of p.lines)for(let i=0;i<l.points.length;i++){const q=l.points[i],d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<bd){bd=d;best={lineId:l.id,index:i}}}return best}
  function hitLine(pt:{x:number;y:number}){let best:string|null=null,bd=.035;for(const l of p.lines)for(const q of l.points){const d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<bd){bd=d;best=l.id}}return best}
- function drawPoint(ev:ReactPointerEvent<HTMLCanvasElement>){const raw=canvasPoint(ev),pt=snapPoint(raw);if(graphDragging&&selectedGraphNode&&graphDragLast){
-   const gn=rebuildGraph(p.lines).find(n=>n.id===selectedGraphNode);
-   if(gn){
-     const dx=pt.x-graphDragLast.x,dy=pt.y-graphDragLast.y;
-     const ids=new Set(gn.lineIds);
-     setProject(prev=>{if(!prev)return prev;const lines=prev.lines.map(l=>{if(!ids.has(l.id))return l;const points=l.points.map(q=>({...q}));if(Math.hypot(points[0].x-gn.point.x,points[0].y-gn.point.y)<=.035){points[0].x+=dx;points[0].y+=dy}const z=points.length-1;if(Math.hypot(points[z].x-gn.point.x,points[z].y-gn.point.y)<=.035){points[z].x+=dx;points[z].y+=dy}return {...l,points}});return {...prev,lines,updatedAt:Date.now()}});
-     const snapRadius=.025;
-     const currentGraph=rebuildGraph(lines);
-     const moved=currentGraph.find(n=>n.id===selectedGraphNode);
-     if(moved){
-       const target=currentGraph.find(n=>n.id!==selectedGraphNode&&Math.hypot(n.point.x-moved.point.x,n.point.y-moved.point.y)<=snapRadius);
-       if(target){
-         const dx=target.point.x-moved.point.x,dy=target.point.y-moved.point.y;
-         setProject(p=>{if(!p)return p;const merged=p.lines.map(l=>{if(!moved.lineIds.includes(l.id))return l;const points=l.points.map(q=>({...q}));if(Math.hypot(points[0].x-moved.point.x,points[0].y-moved.point.y)<=.04){points[0].x+=dx;points[0].y+=dy}const z=points.length-1;if(Math.hypot(points[z].x-moved.point.x,points[z].y-moved.point.y)<=.04){points[z].x+=dx;points[z].y+=dy}return {...l,points}});return {...p,lines:merged,connections:findConnectionCandidates(merged,p.settings.connectDistance),warnings:analyze(merged),sticks:recommendSticks(merged),updatedAt:Date.now()}});
-     setGraphDragLast(pt);
-     const graphNow=rebuildGraph(lines);
-     const connectionsNow=findConnectionCandidates(lines,prev.settings.connectDistance);
-     const warningsNow=analyze(lines);
-     const sticksNow=recommendSticks(lines);
-     setProject(p=>p?{...p,lines,connections:connectionsNow,warnings:warningsNow,sticks:sticksNow,updatedAt:Date.now()}:p);
-   }
-   return;
- }
- if(cursor==='select'){const node=hitNode(pt);if(node){setSelectedNode(node);setSelectedLine(node.lineId);setNodeDragging(true);setDragStart(pt);return}const id=hitLine(pt);setSelectedLine(id);setSelectedNode(null);if(id){setDragging(true);setDragStart(pt)}return}if(cursor==='connect'){const id=hitLine(pt);if(id){if(!connectStart)setConnectStart(id);else if(connectStart!==id){setP(q=>{const a=q.lines.find(l=>l.id===connectStart),bb=q.lines.find(l=>l.id===id);if(!a||!bb)return q;const cc=findConnectionCandidates([a,bb],q.settings.connectDistance)[0];return cc?{...q,connections:[...q.connections,cc],updatedAt:Date.now()}:q});setConnectStart(null)}}return}if(cursor==='draw'){setP(q=>({...q,lines:[...q.lines,{id:crypto.randomUUID(),points:[pt,{x:pt.x+.04,y:pt.y+.04}],width:q.settings.minWidthMm}],connections:[],history:[...q.history,snapshot('Draw',q.lines)],updatedAt:Date.now()}))}}
+ function drawPoint(ev:ReactPointerEvent<HTMLCanvasElement>){const raw=canvasPoint(ev),pt=snapPoint(raw);
+ if(graphDragging&&selectedGraphNode&&graphDragLast){const gn=rebuildGraph(p.lines).find(n=>n.id===selectedGraphNode);if(gn){const dx=pt.x-graphDragLast.x,dy=pt.y-graphDragLast.y;setP(q=>{const ids=new Set(gn.lineIds),lines=q.lines.map(l=>{if(!ids.has(l.id))return l;const points=l.points.map(z=>({...z}));if(Math.hypot(points[0].x-gn.point.x,points[0].y-gn.point.y)<=.04){points[0].x+=dx;points[0].y+=dy}const z=points.length-1;if(Math.hypot(points[z].x-gn.point.x,points[z].y-gn.point.y)<=.04){points[z].x+=dx;points[z].y+=dy}return{...l,points}});return{...q,lines,connections:findConnectionCandidates(lines,q.settings.connectDistance),warnings:analyze(lines),sticks:recommendSticks(lines),updatedAt:Date.now()}});setGraphDragLast(pt)}return}
+ if(cursor==='select'){const gn=graphNodeAt(pt);if(gn){setSelectedGraphNode(gn.id);setSelectedLine(gn.lineIds[0]??null);setSelectedNode(null);setGraphDragging(true);setGraphDragLast(pt);return}setSelectedGraphNode(null);const node=hitNode(pt);if(node){setSelectedNode(node);setSelectedLine(node.lineId);setNodeDragging(true);setDragStart(pt);return}const id=hitLine(pt);setSelectedLine(id);setSelectedNode(null);if(id){setDragging(true);setDragStart(pt)}return}
+ if(cursor==='connect'){const id=hitLine(pt);if(id){if(!connectStart)setConnectStart(id);else if(connectStart!==id){setP(q=>{const aa=q.lines.find(l=>l.id===connectStart),bb=q.lines.find(l=>l.id===id);if(!aa||!bb)return q;const cc=findConnectionCandidates([aa,bb],q.settings.connectDistance)[0];return cc?{...q,connections:[...q.connections,cc],updatedAt:Date.now()}:q});setConnectStart(null)}}return}
+ if(cursor==='draw')setP(q=>({...q,lines:[...q.lines,{id:crypto.randomUUID(),points:[pt,{x:pt.x+.04,y:pt.y+.04}],width:q.settings.minWidthMm}],connections:[],history:[...q.history,snapshot('Draw',q.lines)],updatedAt:Date.now()}))}
+
  function movePoint(ev:ReactPointerEvent<HTMLCanvasElement>){const raw=canvasPoint(ev),q=snapPoint(raw),dx=q.x-dragStart.x,dy=q.y-dragStart.y;if(nodeDragging&&selectedNode){setDragStart(q);setP(v=>({...v,lines:v.lines.map(l=>l.id===selectedNode.lineId?{...l,points:l.points.map((pt,i)=>i===selectedNode.index?{x:q.x,y:q.y}:pt)}:l),updatedAt:Date.now()}));return}if(!dragging||!selectedLine)return;setDragStart(q);setP(v=>({...v,lines:v.lines.map(l=>l.id===selectedLine?{...l,points:l.points.map(pt=>({x:pt.x+dx,y:pt.y+dy}))}:l),updatedAt:Date.now()}))}
  function endPoint(){setDragging(false);setNodeDragging(false);if(!snap)return;setP(q=>{const lines=q.lines.map(l=>({...l,points:l.points.map(pt=>({...pt}))}));let changed=false;for(let i=0;i<lines.length;i++)for(let j=i+1;j<lines.length;j++){for(const ai of [0,lines[i].points.length-1])for(const bj of [0,lines[j].points.length-1]){const a=lines[i].points[ai],b=lines[j].points[bj];if(Math.hypot(a.x-b.x,a.y-b.y)<.012){const m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};lines[i].points[ai]=m;lines[j].points[bj]=m;changed=true}}}if(!changed)return q;const graph=rebuildGraph(lines),warnings=[...analyze(lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))];return{...q,lines,connections:findConnectionCandidates(lines,q.settings.connectDistance),warnings,sticks:recommendSticks(lines),history:[...q.history,snapshot('Snap and merge endpoints',q.lines)],updatedAt:Date.now()}})}
 
