@@ -274,20 +274,27 @@ function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connection
   if(idx>=0){setSelectedLine(step.lineId);setSelectedLines([step.lineId]);setViewMode('result')}
  }
  function rebuildProductionPlan(){setProductionPlan(buildProductionPlan(p));setProductionSelected(0)}
+ function productionLiftFlags(steps:ProductionPlan['steps']){
+  return steps.map((step,i)=>({
+   ...step,
+   index:i+1,
+   penLiftBefore:i>0&&Math.hypot(step.start.x-steps[i-1].end.x,step.start.y-steps[i-1].end.y)>.018
+  }));
+ }
  function moveProductionStep(from:number,to:number){
   if(!productionPlan||from<0||from>=productionPlan.steps.length||to<0||to>=productionPlan.steps.length||from===to)return;
   const steps=[...productionPlan.steps],moved=steps.splice(from,1)[0];
   if(!moved)return;
   steps.splice(to,0,moved);
-  const next=steps.map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}));
-  const nextPlan={...productionPlan,steps:next,estimatedPenLifts:Math.max(0,next.length-1),totalLengthMm:Math.round(next.reduce((n,s)=>n+s.lengthMm,0)*10)/10};
+  const next=productionLiftFlags(steps),lifts=next.filter(s=>s.penLiftBefore).length;
+  const nextPlan={...productionPlan,steps:next,estimatedPenLifts:lifts,totalLengthMm:Math.round(next.reduce((n,s)=>n+s.lengthMm,0)*10)/10};
   setP(q=>({...q,history:[...q.history,snapshot('Move production step',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}));
   setProductionPlan(nextPlan);
  }
  function deleteProductionStep(index:number){
   if(!productionPlan||index<0||index>=productionPlan.steps.length)return;
-  const steps=productionPlan.steps.filter((_,i)=>i!==index).map((step,i)=>({...step,index:i+1,penLiftBefore:i>0}));
-  const nextPlan={...productionPlan,steps,estimatedPenLifts:Math.max(0,steps.length-1),totalLengthMm:Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10,summary:[steps.length+' drawing segments',Math.max(0,steps.length-1)+' estimated pen lifts',Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10+' mm total path',productionPlan.summary[3]??'',productionPlan.summary[4]??'']};
+  const steps=productionLiftFlags(productionPlan.steps.filter((_,i)=>i!==index)),lifts=steps.filter(s=>s.penLiftBefore).length,total=Math.round(steps.reduce((n,s)=>n+s.lengthMm,0)*10)/10;
+  const nextPlan={...productionPlan,steps,estimatedPenLifts:lifts,totalLengthMm:total,summary:[steps.length+' drawing segments',lifts+' estimated pen lifts',total+' mm total path',productionPlan.summary[3]??'',productionPlan.summary[4]??'']};
   setP(q=>({...q,history:[...q.history,snapshot('Delete production step',q.lines,q.sticks,q.productionPlan,q.constraints,q.connections)],updatedAt:Date.now()}));
   setProductionPlan(nextPlan);
  }
