@@ -42,6 +42,10 @@ export default function App(){
    const theta=Math.atan2(fy-ey,fx-ex);arrow(ex,ey,theta);arrow(fx,fy,theta+Math.PI);
    const label=len.toFixed(1)+' mm',tw=x.measureText(label).width+16,mx=(ex+fx)/2,my=(ey+fy)/2-10;
    x.fillStyle=dark?'rgba(16,18,22,.94)':'rgba(255,255,255,.96)';x.beginPath();x.roundRect(mx-tw/2,my-10,tw,20,5);x.fill();x.fillStyle=dark?'#f1f3f5':'#171717';x.font='600 11px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillText(label,mx,my);
+   const activeConstraints=(p.constraints??[]).filter(v=>v.lineId===selectedCad.id),hasLength=activeConstraints.some(v=>v.type==='length'),hasAngle=activeConstraints.some(v=>v.type==='angle'),hasH=activeConstraints.some(v=>v.type==='horizontal'),hasV=activeConstraints.some(v=>v.type==='vertical'),hasX=activeConstraints.some(v=>v.type==='x'),hasY=activeConstraints.some(v=>v.type==='y');
+   if((hasH&&hasV)||(hasLength&&hasH&&hasV)){x.fillStyle='#ef5350';x.font='700 11px system-ui';x.textAlign='left';x.fillText('Constraint conflict',Math.min(ax,bx)+12,Math.min(ay,by)-16)}
+   if(hasLength&&Math.abs(len-(activeConstraints.find(v=>v.type==='length')?.value??len))>.2){x.fillStyle='#ef5350';x.font='700 11px system-ui';x.fillText('Length conflict',Math.min(ax,bx)+12,Math.min(ay,by)-30)}
+   if(hasAngle&&Math.abs((((ang-(activeConstraints.find(v=>v.type==='angle')?.value??ang)+180)%360)-180))>.5){x.fillStyle='#ef5350';x.font='700 11px system-ui';x.fillText('Angle conflict',Math.min(ax,bx)+12,Math.min(ay,by)-44)}
    const angleLabel=ang.toFixed(1)+'°',atw=x.measureText(angleLabel).width+14;x.fillStyle=dark?'rgba(16,18,22,.94)':'rgba(255,255,255,.96)';x.beginPath();x.roundRect((ax+bx)/2-atw/2,(ay+by)/2+14,atw,20,5);x.fill();x.fillStyle=dark?'#f59e0b':'#9a6700';x.fillText(angleLabel,(ax+bx)/2,(ay+by)/2+24);
    x.restore();
   }
