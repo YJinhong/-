@@ -30,18 +30,21 @@ function effectiveProductionPlan(p:Project){return p.productionPlan??fallbackPro
 export async function planPdfBytes(p:Project){
  const doc=await PDFDocument.create();
  const font=await doc.embedFont(StandardFonts.Helvetica); const plan=effectiveProductionPlan(p);
- const landscape=p.heightMm>p.widthMm; const pageW=landscape?842:842,pageH=595,margin=30;
+ const pageW=792,pageH=612,margin=24;
  const page=doc.addPage([pageW,pageH]);
  page.drawRectangle({x:18,y:18,width:pageW-36,height:pageH-36,borderWidth:.8,borderColor:rgb(.22,.23,.26)});page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:margin,y:pageH-margin,size:20,font,color:rgb(.08,.08,.1)});
  page.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-24,size:11,font,color:rgb(.3,.3,.34)});
  page.drawText('WORKING DRAWING · PATH ORDER · SUPPORT DETAILS',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
- const frameX=margin,frameY=170,frameW=pageW-margin*2,frameH=300;
+ const frameX=margin,frameY=104,frameW=pageW-margin*2,frameH=440;
  page.drawRectangle({x:frameX,y:frameY,width:frameW,height:frameH,borderWidth:1,borderColor:rgb(.65,.66,.7)});
- const scale=Math.min(frameW/p.widthMm,frameH/p.heightMm);
- const ox=frameX+(frameW-p.widthMm*scale)/2,oy=frameY+(frameH-p.heightMm*scale)/2;
- page.drawRectangle({x:ox,y:oy,width:p.widthMm*scale,height:p.heightMm*scale,borderWidth:.5,borderColor:rgb(.82,.83,.86)});
- const px=(q:{x:number;y:number})=>ox+(q.x+.5)*p.widthMm*scale;
- const py=(q:{x:number;y:number})=>oy+(q.y+.5)*p.heightMm*scale;
+ const rotateArtwork=p.heightMm>p.widthMm;
+ const artW=rotateArtwork?p.heightMm:p.widthMm,artH=rotateArtwork?p.widthMm:p.heightMm;
+ const scale=Math.min((frameW-18)/artW,(frameH-18)/artH);
+ const ox=frameX+(frameW-artW*scale)/2,oy=frameY+(frameH-artH*scale)/2;
+ page.drawRectangle({x:ox,y:oy,width:artW*scale,height:artH*scale,borderWidth:.5,borderColor:rgb(.82,.83,.86)});
+ const displayPoint=(q:{x:number;y:number})=>rotateArtwork?{x:(.5-q.y),y:q.x+.5}:{x:q.x+.5,y:q.y+.5};
+ const px=(q:{x:number;y:number})=>ox+displayPoint(q).x*artW*scale;
+ const py=(q:{x:number;y:number})=>oy+displayPoint(q).y*artH*scale;
  p.lines.forEach((l,idx)=>{
   for(let i=1;i<l.points.length;i++){const a=l.points[i-1],b=l.points[i];page.drawLine({start:{x:px(a),y:py(a)},end:{x:px(b),y:py(b)},thickness:Math.max(.6,Math.min(5,l.width*scale)),color:rgb(.05,.05,.06)})}
   if(l.points.length)pdfLabel(page,px(l.points[0]),py(l.points[0]),String(idx+1),font);
@@ -53,23 +56,23 @@ export async function planPdfBytes(p:Project){
   const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
   page.drawText(st.length.toFixed(1)+' mm · '+st.angle.toFixed(1)+'°',{x:mx+nx*9,y:my+ny*9-2,size:6,font,color:rgb(.08,.42,.27)});
  });
- const dimGap=18;
- pdfDimLine(page,ox,oy-dimGap,ox+p.widthMm*scale,oy-dimGap,p.widthMm.toFixed(1)+' mm',font);
- pdfDimLine(page,ox-dimGap,oy,ox-dimGap,oy+p.heightMm*scale,p.heightMm.toFixed(1)+' mm',font);
- page.drawText('Scale: 1 drawing unit = '+scale.toFixed(2)+' pt/mm',{x:margin,y:286,size:7,font,color:rgb(.45,.45,.48)});page.drawText('DWG TYPE: SUGAR ART FABRICATION · UNITS: mm · REV: A',{x:pageW-285,y:286,size:7,font,color:rgb(.35,.35,.4)});
- let y=138;
- const cols=[margin,210,430,590];
- ['ITEM','VALUE','ITEM','VALUE'].forEach((t,i)=>page.drawText(t,{x:cols[i],y,size:8,font,color:rgb(.4,.4,.44)}));y-=14;
- const pathLength=plan.totalLengthMm;
- const rows=[['Canvas',p.widthMm+' × '+p.heightMm+' mm','Steps',String(plan.steps.length)],['Min width',p.settings.minWidthMm+' mm','Sticks',String(p.sticks.length)],['Path length',pathLength.toFixed(1)+' mm','Warnings',String(p.warnings.length)]];
- for(const row of rows){row.forEach((t,i)=>page.drawText(t.slice(0,24),{x:cols[i],y,size:9,font,color:rgb(.12,.12,.14)}));y-=15}
- y-=8;page.drawText('SUPPORT STICKS',{x:margin,y,size:10,font});y-=15;
- for(const st of p.sticks.slice(0,5)){page.drawText('S'+(p.sticks.indexOf(st)+1)+' · '+st.kind+' · '+st.length.toFixed(1)+' mm · '+st.angle.toFixed(1)+'° · score '+Math.round(st.score),{x:margin,y,size:7,font});y-=10}
- y-=4;page.drawText('DRAWING ORDER',{x:margin,y,size:10,font});y-=15;
- plan.steps.slice(0,7).forEach((s,i)=>{const l=p.lines.find(v=>v.id===s.lineId);page.drawText((i+1)+'. '+s.action+' · '+s.lengthMm.toFixed(1)+' mm'+(l?' · '+l.points.length+' pts · '+l.width.toFixed(3):' · manual step'),{x:margin,y,size:7,font});y-=10});
- y-=4;page.drawText('WARNINGS',{x:margin,y,size:10,font});y-=15;
- for(const w of p.warnings.slice(0,4)){page.drawText((w.severity.toUpperCase()+': '+w.message).slice(0,110),{x:margin,y,size:7,font});y-=10}
- page.drawLine({start:{x:margin,y:48},end:{x:pageW-margin,y:48},thickness:.6,color:rgb(.35,.36,.4)});page.drawText('NOTES: Verify syrup temperature, viscosity, adhesion and support strength before fabrication.',{x:margin,y:35,size:6.2,font,color:rgb(.4,.4,.44)});page.drawText('Structural analysis is geometric/heuristic; it is not a material mechanics simulation.',{x:margin,y:24,size:6.2,font,color:rgb(.45,.45,.48)});page.drawRectangle({x:pageW-190,y:18,width:154,height:34,borderWidth:.6,borderColor:rgb(.35,.36,.4)});page.drawText('SugarDraw',{x:pageW-180,y:39,size:9,font});page.drawText('PRODUCTION PLAN · REV A',{x:pageW-180,y:27,size:6.5,font,color:rgb(.4,.4,.44)});
+ const dimGap=12;
+ pdfDimLine(page,ox,oy-dimGap,ox+artW*scale,oy-dimGap,artW.toFixed(1)+' mm',font);
+ pdfDimLine(page,ox-dimGap,oy,ox-dimGap,oy+artH*scale,artH.toFixed(1)+' mm',font);
+ page.drawText('Scale 1:'+Math.max(1,Math.round(1/scale)).toString(),{x:margin,y:86,size:7,font,color:rgb(.45,.45,.48)});
+ page.drawText('UNITS: mm · REV: A · '+(rotateArtwork?'VIEW ROTATED 90°':'NATIVE ORIENTATION'),{x:pageW-270,y:86,size:7,font,color:rgb(.35,.35,.4)});
+ let y=72;
+ const tbX=pageW-330,tbY=20,tbW=306,tbH=62;
+ page.drawRectangle({x:tbX,y:tbY,width:tbW,height:tbH,borderWidth:.7,borderColor:rgb(.35,.36,.4)});
+ page.drawText('SugarDraw · PRODUCTION PLAN',{x:tbX+8,y:tbY+43,size:9,font});
+ page.drawText(p.name.slice(0,42),{x:tbX+8,y:tbY+31,size:8,font});
+ page.drawText('SIZE  '+p.widthMm.toFixed(1)+' × '+p.heightMm.toFixed(1)+' mm',{x:tbX+8,y:tbY+18,size:7,font});
+ page.drawText('PATH  '+plan.totalLengthMm.toFixed(1)+' mm',{x:tbX+130,y:tbY+18,size:7,font});
+ page.drawText('LINES  '+p.lines.length+'   STICKS  '+p.sticks.length+'   WARNINGS  '+p.warnings.length,{x:tbX+8,y:tbY+7,size:6.5,font,color:rgb(.4,.4,.44)});
+ page.drawText('DWG TYPE: SUGAR ART FABRICATION',{x:margin,y:58,size:7,font,color:rgb(.35,.35,.4)});
+ page.drawText('Verify temperature, viscosity, adhesion and support strength before fabrication.',{x:margin,y:46,size:6.2,font,color:rgb(.4,.4,.44)});
+ page.drawText('Structural analysis is geometric/heuristic; not a material mechanics simulation.',{x:margin,y:34,size:6.2,font,color:rgb(.45,.45,.48)});
+
 
  // Page 2: detailed step-by-step production instructions.
  let detail=doc.addPage([pageW,pageH]);
