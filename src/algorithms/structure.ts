@@ -91,8 +91,6 @@ export function recommendSticks(lines:Line[]):SupportStick[]{
    const tangent=tangentAt(line,i);
    const tm=Math.hypot(tangent.x,tangent.y);
    if(tm<1e-9)continue;
-   // A support is placed perpendicular to the local tangent. Prefer a
-   // straight load-bearing span, but retain mildly curved regions.
    const localAngle=Math.atan2(tangent.y,tangent.x)*180/Math.PI;
    const stickAngle=localAngle+90;
    const clearance=tooCloseToOtherLines(p,line.id,lines);
@@ -101,7 +99,7 @@ export function recommendSticks(lines:Line[]):SupportStick[]{
    const curvaturePenalty=Math.min(1,curvature/110);
    const widthBonus=clamp((line.width-2.5)/2.5,0,1);
    const lineDegree=degree.get(line.id)??1;
-   const degreeBonus=lineDegree>=3 ? 0.12 : lineDegree===1 ? 0.08 : 0;
+   const degreeBonus=lineDegree>=3?0.12:lineDegree===1?0.08:0;
    const score=clamp(
     42+
     34*clamp(len/.8,0,1)+
