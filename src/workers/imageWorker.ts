@@ -1,1 +1,1 @@
-import{rasterToLines}from'../image/imagePipeline';self.onmessage=async(e)=>{const{id,file,detail}=e.data;try{const lines=await rasterToLines(file,detail);self.postMessage({id,ok:true,lines})}catch(error){self.postMessage({id,ok:false,error:String(error)})}};
+import{rasterToLines}from'../image/imagePipeline';self.onmessage=async(e)=>{const{id,file,detail}=e.data;try{const lines=await rasterToLines(file,detail);self.postMessage({id,ok:true,lines})}catch(error){self.postMessage({id,ok:false,error:error instanceof Error?error.message:String(error)})}};
