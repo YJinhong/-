@@ -62,15 +62,63 @@ export function eulerTrail(lines:Line[],radius=.018):Line[]{
  const start=odd[0]?.id??nodes[0]?.id;
  return start?eulerFromEdges(lines,edges,start):[];
 }
+function componentEdges(edges:GraphEdge[]):GraphEdge[][]{
+ const byNode=new Map<string,GraphEdge[]>();
+ for(const e of edges){(byNode.get(e.a)??(byNode.set(e.a,[]),byNode.get(e.a)!)).push(e);(byNode.get(e.b)??(byNode.set(e.b,[]),byNode.get(e.b)!)).push(e)}
+ const seen=new Set<string>(),out:GraphEdge[][]=[];
+ for(const e of edges){
+  if(seen.has(e.lineId))continue;
+  const stack=[e.a],ids:string[]=[];seen.add(e.lineId);
+  while(stack.length){
+   const n=stack.pop()!;for(const x of byNode.get(n)??[])if(!seen.has(x.lineId)){seen.add(x.lineId);ids.push(x.lineId);stack.push(x.a===n?x.b:x.a)}
+  }
+  ids.push(e.lineId);
+  const set=new Set(ids);out.push(edges.filter(x=>set.has(x.lineId)));
+ }
+ return out;
+}
+
+function minimumTrailsForComponent(lines:Line[],edges:GraphEdge[]):Line[][]{
+ if(!edges.length)return[];
+ const degree=new Map<string,number>();
+ const inc=(n:string)=>degree.set(n,(degree.get(n)??0)+1);
+ edges.forEach(e=>{inc(e.a);inc(e.b)});
+ const odd=[...degree.entries()].filter(([,v])=>v%2===1).map(([n])=>n);
+ const artificial=new Set<string>();
+ const work=edges.map(e=>({...e}));
+ for(let i=0;i+1<odd.length;i+=2){
+  const id=crypto.randomUUID();work.push({lineId:id,a:odd[i],b:odd[i+1]});artificial.add(id);
+ }
+ const byNode=new Map<string,GraphEdge[]>();
+ for(const e of work){(byNode.get(e.a)??(byNode.set(e.a,[]),byNode.get(e.a)!)).push(e);(byNode.get(e.b)??(byNode.set(e.b,[]),byNode.get(e.b)!)).push(e)}
+ const unused=new Set(work.map(e=>e.lineId)),byId=new Map(lines.map(l=>[l.id,l]));
+ const adj=(n:string)=>byNode.get(n)??[];
+ const start=[...byNode.keys()][0];if(!start)return[];
+ const stack:{node:string;edge:GraphEdge|null;from:string}[]=[{node:start,edge:null,from:start}],circuit:{edge:GraphEdge;from:string;to:string}[]=[];
+ while(stack.length){
+  const top=stack.at(-1)!;const e=adj(top.node).find(x=>unused.has(x.lineId));
+  if(e){unused.delete(e.lineId);const to=e.a===top.node?e.b:e.a;stack.push({node:to,edge:e,from:top.node})}
+  else{const done=stack.pop()!;if(done.edge)circuit.push({edge:done.edge,from:done.from,to:done.node})}
+ }
+ const directed=circuit.reverse(),trails:{edge:GraphEdge;from:string;to:string}[][]=[];let current:{edge:GraphEdge;from:string;to:string}[]=[];
+ for(const step of directed){
+  if(artificial.has(step.edge.lineId)){
+   if(current.length)trails.push(current);current=[];
+  }else current.push(step);
+ }
+ if(current.length)trails.push(current);
+ return trails.map(t=>t.map(z=>{
+  const l=byId.get(z.edge.lineId)!;
+  return z.edge.a===z.from&&z.edge.b===z.to?l:reverse(l);
+ })).filter(t=>t.length);
+}
+
 export function trailDecomposition(lines:Line[],radius=.018):Line[][]{
  if(!lines.length)return[];
- const remaining=new Map(lines.map(l=>[l.id,l])),trails:Line[][]=[];
- while(remaining.size){
-  const batch=[...remaining.values()],nodes=buildSkeletonGraph(batch,radius),odd=nodes.filter(n=>n.degree%2===1),start=odd[0]?.id??nodes[0]?.id;
-  if(!start)break;
-  const trail=eulerFromEdges(batch,graphEdges(batch,radius),start);
-  if(!trail.length)break;
-  trails.push(trail);trail.forEach(l=>remaining.delete(l.id));
+ const edges=graphEdges(lines,radius),byId=new Map(lines.map(l=>[l.id,l])),components=componentEdges(edges),trails:Line[][]=[];
+ for(const component of components){
+  const componentLines=component.map(e=>byId.get(e.lineId)!).filter(Boolean);
+  trails.push(...minimumTrailsForComponent(componentLines,component));
  }
  return trails;
 }
