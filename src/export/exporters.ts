@@ -32,7 +32,7 @@ export async function planPdfBytes(p:Project){
  const font=await doc.embedFont(StandardFonts.Helvetica); const plan=effectiveProductionPlan(p);
  const pageW=595,pageH=842,margin=36;
  const page=doc.addPage([pageW,pageH]);
- page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:margin,y:pageH-margin,size:20,font,color:rgb(.08,.08,.1)});
+ page.drawRectangle({x:18,y:18,width:pageW-36,height:pageH-36,borderWidth:.8,borderColor:rgb(.22,.23,.26)});page.drawText('SUGAR DRAW PRODUCTION PLAN',{x:margin,y:pageH-margin,size:20,font,color:rgb(.08,.08,.1)});
  page.drawText(p.name.slice(0,70),{x:margin,y:pageH-margin-24,size:11,font,color:rgb(.3,.3,.34)});
  page.drawText('WORKING DRAWING · PATH ORDER · SUPPORT DETAILS',{x:margin,y:pageH-margin-48,size:9,font,color:rgb(.35,.35,.4)});
  const frameX=margin,frameY=300,frameW=pageW-margin*2,frameH=360;
@@ -56,7 +56,7 @@ export async function planPdfBytes(p:Project){
  const dimGap=18;
  pdfDimLine(page,ox,oy-dimGap,ox+p.widthMm*scale,oy-dimGap,p.widthMm.toFixed(1)+' mm',font);
  pdfDimLine(page,ox-dimGap,oy,ox-dimGap,oy+p.heightMm*scale,p.heightMm.toFixed(1)+' mm',font);
- page.drawText('Scale: 1 drawing unit = '+scale.toFixed(2)+' pt/mm',{x:margin,y:286,size:7,font,color:rgb(.45,.45,.48)});
+ page.drawText('Scale: 1 drawing unit = '+scale.toFixed(2)+' pt/mm',{x:margin,y:286,size:7,font,color:rgb(.45,.45,.48)});page.drawText('DWG TYPE: SUGAR ART FABRICATION · UNITS: mm · REV: A',{x:pageW-285,y:286,size:7,font,color:rgb(.35,.35,.4)});
  let y=266;
  const cols=[margin,190,350,470];
  ['ITEM','VALUE','ITEM','VALUE'].forEach((t,i)=>page.drawText(t,{x:cols[i],y,size:8,font,color:rgb(.4,.4,.44)}));y-=14;
@@ -69,7 +69,7 @@ export async function planPdfBytes(p:Project){
  plan.steps.slice(0,12).forEach((s,i)=>{const l=p.lines.find(v=>v.id===s.lineId);page.drawText((i+1)+'. '+s.action+' · '+s.lengthMm.toFixed(1)+' mm'+(l?' · '+l.points.length+' points · '+l.width.toFixed(3)+' width':' · manual step'),{x:margin,y,size:8,font});y-=12});
  y-=4;page.drawText('WARNINGS',{x:margin,y,size:10,font});y-=15;
  for(const w of p.warnings.slice(0,5)){page.drawText((w.severity.toUpperCase()+': '+w.message).slice(0,90),{x:margin,y,size:8,font});y-=12}
- page.drawText('Structural analysis is geometric/heuristic; it is not a material mechanics simulation.',{x:margin,y:24,size:7,font,color:rgb(.45,.45,.48)});
+ page.drawLine({start:{x:margin,y:52},end:{x:pageW-margin,y:52},thickness:.6,color:rgb(.35,.36,.4)});page.drawText('NOTES: Verify syrup temperature, viscosity, adhesion and support strength before fabrication.',{x:margin,y:39,size:6.5,font,color:rgb(.4,.4,.44)});page.drawText('Structural analysis is geometric/heuristic; it is not a material mechanics simulation.',{x:margin,y:27,size:6.5,font,color:rgb(.45,.45,.48)});page.drawRectangle({x:pageW-190,y:18,width:154,height:34,borderWidth:.6,borderColor:rgb(.35,.36,.4)});page.drawText('SugarDraw',{x:pageW-180,y:39,size:9,font});page.drawText('PRODUCTION PLAN · REV A',{x:pageW-180,y:27,size:6.5,font,color:rgb(.4,.4,.44)});
 
  // Page 2: detailed step-by-step production instructions.
  let detail=doc.addPage([pageW,pageH]);
