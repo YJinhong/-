@@ -15,6 +15,7 @@ export class BatchProcessor{
     this.worker.removeEventListener('message',done);this.activeId=null;this.activeReject=null;
     if(e.data.ok){resolve(e.data.lines);return}
     const error=String(e.data.error??'UNKNOWN');
+    if(error==='BATCH_CANCELLED'){reject(new Error('Batch processing cancelled'));return}
     if(error==='IMAGE_DECODE_FAILED'||error==='OFFSCREEN_CANVAS_UNAVAILABLE'){
       rasterToLines(file,detail).then(resolve,reject);
     }else reject(new Error(error));
@@ -23,7 +24,7 @@ export class BatchProcessor{
   })
  }
 
- cancel(){this.cancelled=true;this.paused=false;this.activeReject?.(new Error('Batch processing cancelled'));this.activeReject=null;this.activeId=null;this.worker.terminate();this.worker=new Worker(new URL('../workers/imageWorker.ts',import.meta.url),{type:'module'})}
+ cancel(){this.cancelled=true;this.paused=false;const id=this.activeId;if(id)this.worker.postMessage({type:'cancel',id});this.activeReject?.(new Error('Batch processing cancelled'));this.activeReject=null;this.activeId=null;}
  pause(){this.paused=true}
  resume(){this.paused=false}
 
