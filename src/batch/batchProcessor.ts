@@ -4,15 +4,14 @@ type Result={lines:Line[]};
 
 export class BatchProcessor{
  private worker:Worker;private cancelled=false;private paused=false;private activeId:string|null=null;private activeReject:((reason?:unknown)=>void)|null=null;
- private activeFile:File|null=null;
  constructor(){this.worker=new Worker(new URL('../workers/imageWorker.ts',import.meta.url),{type:'module'})}
 
  process(file:File,detail:'low'|'balanced'|'high'){
   return new Promise<Line[]>((resolve,reject)=>{
-   const id=crypto.randomUUID();this.activeId=id;this.activeReject=reject;this.activeFile=file;
+   const id=crypto.randomUUID();this.activeId=id;this.activeReject=reject;
    const done=(e:MessageEvent)=>{
     if(e.data.id!==id)return;
-    this.worker.removeEventListener('message',done);this.activeId=null;this.activeReject=null;this.activeFile=null;
+    this.worker.removeEventListener('message',done);this.activeId=null;this.activeReject=null;
     if(e.data.ok){resolve(e.data.lines);return}
     const error=String(e.data.error??'UNKNOWN');
     if(error==='IMAGE_DECODE_FAILED'||error==='OFFSCREEN_CANVAS_UNAVAILABLE'){
