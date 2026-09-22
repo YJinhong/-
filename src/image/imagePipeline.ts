@@ -149,7 +149,7 @@ export async function rasterToLines(file:File,detail:'low'|'balanced'|'high'='ba
  if(typeof ImageBitmap!=='undefined'&&img instanceof ImageBitmap)img.close();
  const d=ctx.getImageData(0,0,w,h),g=new Uint8Array(w*h);
  for(let i=0;i<w*h;i++)g[i]=Math.round(.299*d.data[i*4]+.587*d.data[i*4+1]+.114*d.data[i*4+2]);
- const collect=(mask:Uint8Array,target:Line[])=>{const found=contours(thin(mask,w,h),w,h);for(const p of found){const q=rdp(p,detail==='low'?.010:detail==='high'?.003:.006);if(q.length>=3)target.push({id:crypto.randomUUID(),points:q,width:3.5});}};
+ const collect=(mask:Uint8Array,target:Line[])=>{const found=contours(mask,w,h);for(const p of found){const q=rdp(p,detail==='low'?.010:detail==='high'?.003:.006);if(q.length>=3&&q.some((a,i)=>i>0&&Math.hypot(a.x-q[i-1].x,a.y-q[i-1].y)>.002))target.push({id:crypto.randomUUID(),points:q,width:3.5});}};
  const fallbackLines:Line[]=[];
  for(const factor of detail==='low'?[.8,1,1.25]:detail==='high'?[.9,1,1.15]:[.85,1,1.2]){
   collect(gradientMask(g,w,h,factor),fallbackLines);
