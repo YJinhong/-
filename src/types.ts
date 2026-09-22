@@ -7,5 +7,5 @@ export type SupportStick={id:string;x:number;y:number;length:number;angle:number
 export type OptimizationSettings={detail:'low'|'balanced'|'high';minWidthMm:number;connectDistance:number;simplifyTolerance:number};
 export type Version={id:string;createdAt:number;label:string;lines:Line[]};
 export type Project={id:string;name:string;createdAt:number;updatedAt:number;imageData?:string;originalName?:string;lines:Line[];widthMm:number;heightMm:number;settings:OptimizationSettings;warnings:StructuralWarning[];sticks:SupportStick[];connections:ConnectionCandidate[];history:Version[]};
-export type BatchJob={id:string;fileName:string;size:number;status:'queued'|'processing'|'done'|'error'|'paused';progress:number;projectId?:string;error?:string;sourceIndex?:number;thumbnail?:string;width?:number;height?:number;lines?:Line[]};
+export type BatchJob={id:string;fileName:string;size:number;status:'queued'|'processing'|'done'|'error'|'paused'|'cancelled';progress:number;projectId?:string;error?:string;sourceIndex?:number;thumbnail?:string;width?:number;height?:number;lines?:Line[]};
 export type PipelineResult={lines:Line[];connections:ConnectionCandidate[];removed:number;warnings:StructuralWarning[];sticks:SupportStick[]};
