@@ -59,11 +59,11 @@ export function solveConstraints(input:Line[],constraints:CADConstraint[],w:numb
  let lines=clone(input);
  for(let pass=0;pass<iterations;pass++){
   const snapshot=clone(lines);
-  for(const c of constraints){
+  for(const c of constraints){if(c.enabled===false)continue;
    const idx=lines.findIndex(l=>l.id===c.lineId);if(idx<0)continue;
    lines[idx]=project(lines[idx],c,lines,w,h);
   }
-  let max=0;for(const c of constraints){const l=lines.find(x=>x.id===c.lineId);if(l)max=Math.max(max,error(l,c,lines,w,h))}
+  let max=0;for(const c of constraints){if(c.enabled===false)continue;const l=lines.find(x=>x.id===c.lineId);if(l)max=Math.max(max,error(l,c,lines,w,h))}
   if(max<.01)break;
   if(pass===iterations-1)lines=snapshot;
  }
