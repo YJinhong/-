@@ -40,10 +40,18 @@ function mergeComponent(lines:Line[],connections:ConnectionCandidate[]):Line[]{
   sides[end]=link;links.set(lineId,sides);return true;
  };
 
- for(const c of connections){
-  if(c.a===c.b||!byId.has(c.a)||!byId.has(c.b))continue;
-  setLink(c.a,c.aEnd,{to:{lineId:c.b,end:c.bEnd},distance:c.distance});
-  setLink(c.b,c.bEnd,{to:{lineId:c.a,end:c.aEnd},distance:c.distance});
+ const ranked=[...connections].filter(c=>c.a!==c.b&&byId.has(c.a)&&byId.has(c.b)).sort((a,b)=>a.distance-b.distance);
+ for(const c of ranked){
+  const aOk=setLink(c.a,c.aEnd,{to:{lineId:c.b,end:c.bEnd},distance:c.distance});
+  const bOk=setLink(c.b,c.bEnd,{to:{lineId:c.a,end:c.aEnd},distance:c.distance});
+  if(aOk&&bOk)continue;
+  // A line endpoint can only participate in one linear join. If either side
+  // is already occupied, discard the whole candidate rather than creating a
+  // one-sided link that can corrupt traversal.
+  const aLinks=links.get(c.a)??{},bLinks=links.get(c.b)??{};
+  if(aOk)delete aLinks[c.aEnd];
+  if(bOk)delete bLinks[c.bEnd];
+  links.set(c.a,aLinks);links.set(c.b,bLinks);
  }
 
  const degree=(id:string)=>{
