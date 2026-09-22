@@ -114,7 +114,7 @@ async function smartContours(file:File,detail:'low'|'balanced'|'high',onProgress
     const minPerimeter=Math.max(14,Math.min(result.width,result.height)*.025);
     for(let i=0;i<cs.size();i++){
      const c=cs.get(i),per=cv.arcLength(c,true),box=cv.boundingRect(c);
-     if(per<minPerimeter||(box.width<4&&box.height<4)||(box.width<.97*result.width&&box.height<.97*result.height?false:false)){c.delete();continue}
+     if(per<minPerimeter||(box.width<4&&box.height<4)){c.delete();continue}
      if(box.width>.97*result.width&&box.height>.97*result.height&&per<result.width*2.5){c.delete();continue}
      const approx=new cv.Mat(),eps=per*(detail==='low'?.012:detail==='high'?.004:.007);
      cv.approxPolyDP(c,approx,eps,true);
