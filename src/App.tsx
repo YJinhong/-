@@ -244,21 +244,42 @@ async function openBatchResult(job:BatchJob):Promise<Project|undefined>{
   setP(project);setProductionPlan(project.productionPlan??null);setProductionSelected(0);setBatchOpen(false);return project
 }
 function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connections=findConnectionCandidates(q.lines,q.settings.connectDistance),warnings=[...analyze(q.lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))];return{...q,connections,warnings,sticks:recommendSticks(q.lines),updatedAt:Date.now()}})}
+ function supportStickForLine(line:Line,sticks:Project['sticks'],used:Set<string>){
+  if(line.points.length<2||!sticks.length)return undefined;
+  const candidates=sticks.filter(stick=>!used.has(stick.id)).map(stick=>{
+   let bestDistance=Infinity,bestAngleError=180;
+   for(let i=1;i<line.points.length;i++){
+    const a=line.points[i-1],b=line.points[i],dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy;
+    const t=den<1e-12?0:Math.max(0,Math.min(1,((stick.x-a.x)*dx+(stick.y-a.y)*dy)/den));
+    const px=a.x+t*dx,py=a.y+t*dy,distance=Math.hypot(stick.x-px,stick.y-py);
+    const tangentAngle=Math.atan2(dy,dx)*180/Math.PI;
+    const normal=tangentAngle+90;
+    const raw=Math.abs(((stick.angle-normal+180)%360+360)%360-180);
+    const angleError=Math.min(raw,Math.abs(180-raw));
+    if(distance<bestDistance){bestDistance=distance;bestAngleError=angleError}
+   }
+   const anglePenalty=bestAngleError/180;
+   return{stick,distance:bestDistance,angleError:bestAngleError,score:bestDistance+anglePenalty*.035};
+  }).filter(c=>c.distance<=.07).sort((a,b)=>a.score-b.score);
+  return candidates[0]?.stick;
+ }
  function buildProductionPlan(project:Project):ProductionPlan{
   const path=minimumPenLiftPath(project.lines);
   let total=0;
   const steps:ProductionPlan['steps']=[];
+  const usedSupportSticks=new Set<string>();
   path.trails?.forEach((trail,trailIndex)=>{
    trail.forEach(l=>{
     const start=l.points[0],end=l.points.at(-1)!;
     const lengthMm=Math.round(polylineLengthMm(l.points,project.widthMm,project.heightMm)*10)/10;
     total+=lengthMm;
-    const attached=project.sticks.find(stick=>Math.hypot(stick.x-start.x,stick.y-start.y)<.06);
+    const attached=supportStickForLine(l,project.sticks,usedSupportSticks);
+    if(attached)usedSupportSticks.add(attached.id);
     const action=(l.closed?'CLOSE':attached?'SUPPORT':'DRAW') as 'DRAW'|'CLOSE'|'SUPPORT';
     steps.push({
      id:crypto.randomUUID(),index:steps.length+1,lineId:l.id,action,lengthMm,start,end,
      penLiftBefore:trailIndex>0,supportStickId:attached?.id,
-     note:l.closed?'Close this contour smoothly.':attached?'Place/check support before continuing this span.':trailIndex===0&&steps.length===0?'Start from this endpoint and maintain a steady syrup flow.':trailIndex>0?'Lift, reposition to the next trail start, then continue.':'Continue the syrup flow through the connected path.'
+     note:l.closed?'Close this contour smoothly.':attached?'Place/check support near the marked load-bearing point before continuing this span.':trailIndex===0&&steps.length===0?'Start from this endpoint and maintain a steady syrup flow.':trailIndex>0?'Lift, reposition to the next trail start, then continue.':'Continue the syrup flow through the connected path.'
     });
    });
   });
