@@ -17,21 +17,59 @@ function thin(src:Uint8Array,w:number,h:number){
 }
 
 function contours(mask:Uint8Array,w:number,h:number):Point[][]{
- const used=new Uint8Array(w*h),out:Point[][]=[];
  const id=(x:number,y:number)=>y*w+x;
  const dirs=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
- for(let sy=1;sy<h-1;sy++)for(let sx=1;sx<w-1;sx++){
-  if(!mask[id(sx,sy)]||used[id(sx,sy)])continue;
-  let x=sx,y=sy,px=sx-1,py=sy,pts:Point[]=[];
-  for(let k=0;k<w*h;k++){
-   used[id(x,y)]=1;pts.push({x:x/w-.5,y:y/h-.5});
-   let best=-1,bd=1e9;
-   for(let j=0;j<8;j++){const qx=x+dirs[j][0],qy=y+dirs[j][1];
-    if(qx<1||qx>=w-1||qy<1||qy>=h-1||!mask[id(qx,qy)]||used[id(qx,qy)])continue;
-    const d=(qx-px)*(qx-px)+(qy-py)*(qy-py);if(d<bd){bd=d;best=j}
+ const neighbors=(x:number,y:number)=>{
+  const out:number[]=[];
+  for(let d=0;d<8;d++){const nx=x+dirs[d][0],ny=y+dirs[d][1];
+   if(nx>=1&&nx<w-1&&ny>=1&&ny<h-1&&mask[id(nx,ny)])out.push(d);
+  }
+  return out;
+ };
+ const degree=new Uint8Array(w*h);
+ for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++)if(mask[id(x,y)])degree[id(x,y)]=neighbors(x,y).length;
+ const used=new Uint8Array(w*h),out:Point[][]=[];
+ const mark=(x:number,y:number)=>used[id(x,y)]=1;
+ const point=(x:number,y:number):Point=>({x:x/w-.5,y:y/h-.5});
+ const trace=(sx:number,sy:number,sd:number)=>{
+  const pts:Point[]=[point(sx,sy)];let px=sx,py=sy,x=sx+dirs[sd][0],y=sy+dirs[sd][1];
+  mark(sx,sy);
+  for(let guard=0;guard<w*h;guard++){
+   if(x<1||x>=w-1||y<1||y>=h-1||!mask[id(x,y)])break;
+   pts.push(point(x,y));mark(x,y);
+   const ns=neighbors(x,y);
+   if(degree[id(x,y)]!==2)break;
+   let next=-1;
+   for(const d of ns){const nx=x+dirs[d][0],ny=y+dirs[d][1];if(nx!==px||ny!==py){next=d;break}}
+   if(next<0)break;
+   px=x;py=y;x+=dirs[next][0];y+=dirs[next][1];
+  }
+  return pts;
+ };
+ // Trace every edge incident to a junction/end point. This preserves branches
+ // instead of greedily consuming a junction and losing the remaining arms.
+ for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+  if(!mask[id(x,y)]||degree[id(x,y)]===2)continue;
+  for(const d of neighbors(x,y)){
+   const nx=x+dirs[d][0],ny=y+dirs[d][1];
+   if(!used[id(nx,ny)]){
+    const p=trace(x,y,d);if(p.length>=3)out.push(p);
    }
-   if(best<0)break;px=x;py=y;x+=dirs[best][0];y+=dirs[best][1];
-   if(x===sx&&y===sy)break;
+  }
+ }
+ // Remaining degree-2 pixels are isolated loops. Trace each loop once.
+ for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+  const root=id(x,y);if(!mask[root]||used[root]||degree[root]!==2)continue;
+  const ns=neighbors(x,y);if(!ns.length)continue;
+  const pts:Point[]=[point(x,y)];let px=x,py=y,cx=x+dirs[ns[0]][0],cy=y+dirs[ns[0]][1];mark(x,y);
+  for(let guard=0;guard<w*h;guard++){
+   if(cx===x&&cy===y)break;
+   if(cx<1||cx>=w-1||cy<1||cy>=h-1||!mask[id(cx,cy)])break;
+   pts.push(point(cx,cy));mark(cx,cy);
+   const nexts=neighbors(cx,cy);let nd=-1;
+   for(const d of nexts){const nx=cx+dirs[d][0],ny=cy+dirs[d][1];if(nx!==px||ny!==py){nd=d;break}}
+   if(nd<0)break;
+   px=cx;py=cy;cx+=dirs[nd][0];cy+=dirs[nd][1];
   }
   if(pts.length>=3)out.push(pts);
  }
