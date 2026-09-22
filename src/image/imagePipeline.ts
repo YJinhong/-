@@ -66,7 +66,7 @@ function mergeNearby(lines:Line[],gap:number):Line[]{
  while(changed){changed=false;
   outer:for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){
    const A=a[i],B=a[j],ae=A.points.at(-1)!,as=A.points[0],be=B.points.at(-1)!,bs=B.points[0];
-   const pairs:[[Point,Point],[Point,Point]]=[ [ae,bs],[ae,be],[as,bs],[as,be] ];
+   const pairs:Array<[Point,Point]>=[ [ae,bs],[ae,be],[as,bs],[as,be] ];
    let best=Infinity,pa=0;
    pairs.forEach((p,k)=>{const z=dist(p[0],p[1]);if(z<best){best=z;pa=k}});
    if(best>gap)continue;
