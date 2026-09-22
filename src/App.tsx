@@ -245,24 +245,27 @@ async function openBatchResult(job:BatchJob):Promise<Project|undefined>{
 }
 function rebuildTopology(){setP(q=>{const graph=rebuildGraph(q.lines),connections=findConnectionCandidates(q.lines,q.settings.connectDistance),warnings=[...analyze(q.lines),...graph.filter(n=>n.degree>=3).map(n=>({id:crypto.randomUUID(),severity:'low' as const,message:'Junction node detected; review the joint before cooking.',lineIds:n.lineIds}))];return{...q,connections,warnings,sticks:recommendSticks(q.lines),updatedAt:Date.now()}})}
  function buildProductionPlan(project:Project):ProductionPlan{
-  const path=minimumPenLiftPath(project.lines).order;
+  const path=minimumPenLiftPath(project.lines);
   let total=0;
-  const steps=path.map((l,i)=>{
-   const start=l.points[0],end=l.points.at(-1)!;
-   const lengthMm=Math.round(polylineLengthMm(l.points,project.widthMm,project.heightMm)*10)/10;
-   total+=lengthMm;
-   const attached=project.sticks.find(stick=>Math.hypot(stick.x-start.x,stick.y-start.y)<.06);
-   return {
-    id:crypto.randomUUID(),index:i+1,lineId:l.id,
-    action:(l.closed?'CLOSE':attached?'SUPPORT':i===0?'DRAW':'LIFT') as 'DRAW'|'LIFT'|'CLOSE'|'SUPPORT',
-    lengthMm,start,end,penLiftBefore:i>0,supportStickId:attached?.id,
-    note:l.closed?'Close this contour smoothly.':attached?'Place/check support before continuing this span.':i===0?'Start from this endpoint and maintain a steady syrup flow.':'Lift cleanly, reposition to the next start point, then continue.'
-   };
+  const steps:ProductionPlan['steps']=[];
+  path.trails?.forEach((trail,trailIndex)=>{
+   trail.forEach(l=>{
+    const start=l.points[0],end=l.points.at(-1)!;
+    const lengthMm=Math.round(polylineLengthMm(l.points,project.widthMm,project.heightMm)*10)/10;
+    total+=lengthMm;
+    const attached=project.sticks.find(stick=>Math.hypot(stick.x-start.x,stick.y-start.y)<.06);
+    const action=(l.closed?'CLOSE':attached?'SUPPORT':'DRAW') as 'DRAW'|'CLOSE'|'SUPPORT';
+    steps.push({
+     id:crypto.randomUUID(),index:steps.length+1,lineId:l.id,action,lengthMm,start,end,
+     penLiftBefore:trailIndex>0,supportStickId:attached?.id,
+     note:l.closed?'Close this contour smoothly.':attached?'Place/check support before continuing this span.':trailIndex===0&&steps.length===0?'Start from this endpoint and maintain a steady syrup flow.':trailIndex>0?'Lift, reposition to the next trail start, then continue.':'Continue the syrup flow through the connected path.'
+    });
+   });
   });
-  const lifts=Math.max(0,path.length-1);
+  const lifts=Math.max(0,path.penLifts);
   return {
    id:crypto.randomUUID(),createdAt:Date.now(),estimatedPenLifts:lifts,totalLengthMm:Math.round(total*10)/10,steps,
-   summary:[path.length+' drawing segments',lifts+' estimated pen lifts',Math.round(total*10)/10+' mm total path',project.sticks.length+' support sticks',project.warnings.filter(w=>w.severity==='high').length+' high-risk warnings']
+   summary:[steps.length+' drawing segments',lifts+' estimated pen lifts',Math.round(total*10)/10+' mm total path',project.sticks.length+' support sticks',project.warnings.filter(w=>w.severity==='high').length+' high-risk warnings']
   };
  }
  function focusProductionStep(step:ProductionPlan['steps'][number]){
