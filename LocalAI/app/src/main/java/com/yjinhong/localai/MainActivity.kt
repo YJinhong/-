@@ -45,11 +45,24 @@ class MainActivity : ComponentActivity() {
                         Intent.FLAG_GRANT_READ_URI_PERMISSION
                     )
                 } catch (_: SecurityException) {
-                    // The copied model no longer depends on the source URI.
                 }
                 selectedModelPath = storage.importModel(it).absolutePath
             }
         }
+
+    private val savePython =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/x-python")) { uri: Uri? ->
+            uri?.let { target ->
+                val code = pendingPython
+                if (code.isNotBlank()) {
+                    contentResolver.openOutputStream(target)?.use { output ->
+                        output.write(code.toByteArray(Charsets.UTF_8))
+                    }
+                }
+            }
+        }
+
+    private var pendingPython = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -120,9 +133,7 @@ class MainActivity : ComponentActivity() {
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
-                                enabled = vm.loaded &&
-                                    request.isNotBlank() &&
-                                    !vm.generating,
+                                enabled = vm.loaded && request.isNotBlank() && !vm.generating,
                                 onClick = { vm.generate(request) }
                             ) {
                                 Text(
@@ -136,6 +147,16 @@ class MainActivity : ComponentActivity() {
                                 onClick = vm::copyCode
                             ) {
                                 Text("Copy")
+                            }
+
+                            OutlinedButton(
+                                enabled = vm.code.isNotBlank(),
+                                onClick = {
+                                    pendingPython = vm.code
+                                    savePython.launch("generated.py")
+                                }
+                            ) {
+                                Text("Save .py")
                             }
                         }
 
